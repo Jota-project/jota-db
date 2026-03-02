@@ -67,6 +67,51 @@ def bootstrap_system_clients(session: Session):
     
     session.commit()
 
+def sync_local_models(session: Session):
+    """
+    Escanea el directorio definido en MODELS_DIR (por defecto './models')
+    y registra automáticamente los .gguf nuevos en la DB.
+    Los modelos deben estar en carpetas con su mismo nombre (ej: models/llama3/llama3.gguf).
+    """
+    from src.core.models import AIModel
+    from sqlmodel import select
+    
+    models_dir = os.getenv("MODELS_DIR", "./models")
+    if not os.path.exists(models_dir):
+        print(f"⚠️ El directorio de modelos '{models_dir}' no existe. Saltando sincronización...")
+        return
+        
+    print(f"🚀 Escaneando directorio de modelos: {models_dir}")
+    
+    for folder_name in os.listdir(models_dir):
+        folder_path = os.path.join(models_dir, folder_name)
+        
+        if os.path.isdir(folder_path):
+            # El archivo debe llamarse igual que la carpeta + .gguf
+            filename = f"{folder_name}.gguf"
+            file_path = os.path.join(folder_path, filename)
+            
+            if os.path.exists(file_path):
+                model_id = folder_name
+                
+                # Verificar si ya existe por ID o file_path
+                statement = select(AIModel).where((AIModel.id == model_id) | (AIModel.file_path == file_path))
+                existing = session.exec(statement).first()
+                
+                if not existing:
+                    print(f"🛠️  Registrando nuevo modelo: {model_id}")
+                    new_model = AIModel(
+                        id=model_id,
+                        name=model_id.replace("-", " ").title(),
+                        file_path=file_path,
+                        description=f"Modelo auto-descubierto en carpeta: {folder_name}"
+                    )
+                    session.add(new_model)
+                else:
+                    print(f"✅ Modelo {model_id} ya registrado.")
+                
+    session.commit()
+
 def bootstrap_clients(session: Session):
     """
     Carga los clientes externos (ej: Desktop App) desde variables de entorno.
@@ -140,6 +185,7 @@ def init_db():
             with Session(engine) as session:
                 bootstrap_system_clients(session)
                 bootstrap_clients(session)
+                sync_local_models(session)
             
             print("🚀 Sistema inicializado correctamente.")
             break

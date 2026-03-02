@@ -6,8 +6,8 @@ from datetime import datetime
 from enum import Enum
 
 from src.core.database import get_session
-from src.core.models import Conversation, Message, Client
-from src.api.dependencies import get_current_client
+from src.core.models import Conversation, Message, Client, AIModel, InferenceClient
+from src.api.dependencies import get_current_client, get_inference_service
 from src.api.security import verify_api_key
 
 router = APIRouter(
@@ -31,7 +31,25 @@ class MessageCreate(BaseModel):
     role: MessageRole
     content: str
 
+class AIModelRead(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    context_window: int
+    file_path: str
+    gpu_layers: int
+
 # --- Endpoints ---
+
+@router.get("/models", response_model=List[AIModelRead])
+def list_models(
+    session: Session = Depends(get_session),
+    client: Client = Depends(get_current_client),
+    _: bool = Depends(verify_api_key)
+):
+    """Devuelve la lista de modelos disponibles con todos sus atributos."""
+    models = session.exec(select(AIModel)).all()
+    return models
 
 @router.post("/conversations", response_model=Conversation, status_code=status.HTTP_201_CREATED)
 def create_conversation(

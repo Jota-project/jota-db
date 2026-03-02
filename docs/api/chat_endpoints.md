@@ -95,3 +95,22 @@ Agrega un nuevo mensaje a una conversación existente.
 }
 ```
 *Nota: Este endpoint también actualiza automáticamente el campo `updated_at` de la `Conversation` padre.*
+
+---
+
+## `GET /models`
+Devuelve la lista de todos los modelos de IA disponibles con su configuración completa, incluyendo rutas internas.
+
+**Respuesta Exitosa (HTTP 200 OK)**
+```json
+[
+  {
+    "id": "qwen-7b-chat",
+    "name": "Qwen 7b Chat",
+    "description": "Modelo auto-descubierto: qwen-7b-chat.gguf",
+    "context_window": 2048,
+    "file_path": "./models/qwen-7b-chat.gguf",
+    "gpu_layers": -1
+  }
+]
+```

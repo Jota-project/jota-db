@@ -75,7 +75,13 @@ class InferenceClient(BaseStringModel, table=True):
     api_key: str # Clave secreta
     is_active: bool = Field(default=True)
 
-
+# --- MODELS CATALOG LAYER ---
+class AIModel(BaseStringModel, table=True):
+    name: str
+    file_path: str = Field(unique=True)
+    context_window: int = Field(default=2048)
+    gpu_layers: int = Field(default=-1)
+    description: Optional[str] = None
 
 # --- CHAT LAYER (User Facing) ---
 class Client(BaseStringModel, table=True):

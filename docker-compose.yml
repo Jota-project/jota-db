@@ -29,6 +29,8 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgresql://user:pass@db:5432/jota
+    volumes:
+      - ./models:/app/models
     restart: unless-stopped
 
 # Definición de volúmenes nombrados

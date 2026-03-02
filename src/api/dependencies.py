@@ -79,3 +79,25 @@ def get_current_client(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid API Key"
     )
+
+def get_inference_service(
+    x_api_key: str = Header(..., description="API Key for internal service authentication"),
+    session: Session = Depends(get_session)
+) -> InferenceClient:
+    """Authenticates internal services (like InferenceCenter)."""
+    statement = select(InferenceClient).where(InferenceClient.api_key == x_api_key)
+    service = session.exec(statement).first()
+    
+    if not service:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid service API Key"
+        )
+        
+    if not service.is_active:
+         raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Service is inactive"
+        )
+        
+    return service
