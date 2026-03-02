@@ -77,11 +77,12 @@ def sync_local_models(session: Session):
     from sqlmodel import select
     
     models_dir = os.getenv("MODELS_DIR", "./models")
+    host_models_dir = os.getenv("HOST_MODELS_DIR", "/home/sito/JotaDB/models")
     if not os.path.exists(models_dir):
         print(f"⚠️ El directorio de modelos '{models_dir}' no existe. Saltando sincronización...")
         return
         
-    print(f"🚀 Escaneando directorio de modelos: {models_dir}")
+    print(f"🚀 Escaneando directorio de modelos: {models_dir} (Host config: {host_models_dir})")
     
     for folder_name in os.listdir(models_dir):
         folder_path = os.path.join(models_dir, folder_name)
@@ -90,12 +91,13 @@ def sync_local_models(session: Session):
             # El archivo debe llamarse igual que la carpeta + .gguf
             filename = f"{folder_name}.gguf"
             file_path = os.path.join(folder_path, filename)
+            host_file_path = os.path.join(host_models_dir, folder_name, filename)
             
             if os.path.exists(file_path):
                 model_id = folder_name
                 
                 # Verificar si ya existe por ID o file_path
-                statement = select(AIModel).where((AIModel.id == model_id) | (AIModel.file_path == file_path))
+                statement = select(AIModel).where((AIModel.id == model_id) | (AIModel.file_path == host_file_path))
                 existing = session.exec(statement).first()
                 
                 if not existing:
@@ -103,12 +105,17 @@ def sync_local_models(session: Session):
                     new_model = AIModel(
                         id=model_id,
                         name=model_id.replace("-", " ").title(),
-                        file_path=file_path,
+                        file_path=host_file_path,
                         description=f"Modelo auto-descubierto en carpeta: {folder_name}"
                     )
                     session.add(new_model)
                 else:
-                    print(f"✅ Modelo {model_id} ya registrado.")
+                    if existing.file_path != host_file_path:
+                        print(f"🔄 Actualizando ruta del modelo {model_id} a la del host")
+                        existing.file_path = host_file_path
+                        session.add(existing)
+                    else:
+                        print(f"✅ Modelo {model_id} ya registrado y ruta actualizada.")
                 
     session.commit()
 
