@@ -24,11 +24,11 @@ engine = create_engine(
 def bootstrap_system_clients(session: Session):
     """
     Carga los servicios internos 'core' desde variables de entorno.
-    Estos son necesarios para que el sistema funcione (Orchestrator <-> Inference).
+    Estos son necesarios para que el sistema funcione (Orchestrator, Inference, Transcriptor).
     NO toca la tabla Client (usuarios/tablets).
     Es idempotente: si ya existen, no hace nada.
     """
-    from src.core.models import InferenceClient
+    from src.core.models import InternalService
     from sqlmodel import select
 
     # Definir los servicios requeridos
@@ -40,6 +40,10 @@ def bootstrap_system_clients(session: Session):
         {
             "id": os.getenv("INTERNAL_INFERENCE_ID"),
             "key": os.getenv("INTERNAL_INFERENCE_KEY")
+        },
+        {
+            "id": os.getenv("INTERNAL_TRANSCRIPTOR_ID"),
+            "key": os.getenv("INTERNAL_TRANSCRIPTOR_KEY")
         }
     ]
 
@@ -51,17 +55,17 @@ def bootstrap_system_clients(session: Session):
             continue
 
         # Verificar existencia
-        statement = select(InferenceClient).where(InferenceClient.id == svc["id"])
+        statement = select(InternalService).where(InternalService.id == svc["id"])
         existing = session.exec(statement).first()
 
         if not existing:
             print(f"🛠️  Creando servicio interno: {svc['id']}")
-            new_client = InferenceClient(
+            new_service = InternalService(
                 id=svc["id"],
                 api_key=svc["key"],
                 is_active=True
             )
-            session.add(new_client)
+            session.add(new_service)
         else:
             print(f"✅ Servicio interno ya existe: {svc['id']}")
     

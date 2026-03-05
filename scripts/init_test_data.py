@@ -1,7 +1,7 @@
 
 from sqlmodel import Session, select
 from src.core.database import engine
-from src.core.models import Client, InferenceClient
+from src.core.models import Client, InternalService
 
 def init_data():
     with Session(engine) as session:
@@ -15,9 +15,9 @@ def init_data():
             print("Test Client already exists")
             
         # Create Test Service
-        service = session.exec(select(InferenceClient).where(InferenceClient.api_key == "test_service_key")).first()
+        service = session.exec(select(InternalService).where(InternalService.api_key == "test_service_key")).first()
         if not service:
-            service = InferenceClient(client_id="TestService", api_key="test_service_key", role="admin")
+            service = InternalService(client_id="TestService", api_key="test_service_key", role="admin")
             session.add(service)
             print("Created Test Service")
         else:

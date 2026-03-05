@@ -6,8 +6,8 @@ from datetime import datetime
 from enum import Enum
 
 from src.core.database import get_session
-from src.core.models import Conversation, Message, Client, AIModel, InferenceClient
-from src.api.dependencies import get_current_client, get_inference_service, get_any_authenticated_caller
+from src.core.models import Conversation, Message, Client, AIModel, InternalService
+from src.api.dependencies import get_current_client, get_internal_service, get_any_authenticated_caller
 from src.api.security import verify_api_key
 
 router = APIRouter(
@@ -96,6 +96,21 @@ def list_conversations(
         
     query = query.order_by(Conversation.updated_at.desc()).limit(limit)
     return session.exec(query).all()
+
+@router.get("/conversations/{conversation_id}", response_model=Conversation)
+def get_conversation(
+    conversation_id: int,
+    session: Session = Depends(get_session),
+    client: Client = Depends(get_current_client),
+    _: bool = Depends(verify_api_key)
+):
+    """Devuelve el detalle de una conversación específica, incluyendo el modelo de IA activo."""
+    conversation = session.get(Conversation, conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if conversation.client_id != client.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this conversation")
+    return conversation
 
 @router.patch("/conversations/{conversation_id}", response_model=Conversation)
 def update_conversation(

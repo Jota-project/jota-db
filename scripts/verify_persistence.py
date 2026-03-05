@@ -12,7 +12,7 @@ def verify_implementation():
     
     # 1. Verify Models Import
     try:
-        from src.core.models import InferenceClient, Conversation, Message, Client
+        from src.core.models import InternalService, Conversation, Message, Client
         print("✅ Models imported successfully.")
     except ImportError as e:
         print(f"❌ Failed to import models: {e}")

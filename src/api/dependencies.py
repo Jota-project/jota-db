@@ -4,7 +4,7 @@ from sqlmodel import Session, select
 from typing import Optional
 
 from src.core.database import get_session
-from src.core.models import Client, InferenceClient
+from src.core.models import Client, InternalService
 
 def get_current_client(
     x_api_key: str = Header(..., description="API Key for authentication"),
@@ -16,7 +16,7 @@ def get_current_client(
     
     Logic:
     1. Check if X-API-Key belongs to a Client (Direct Access).
-    2. Check if X-API-Key belongs to an InferenceClient (Service Access).
+    2. Check if X-API-Key belongs to an InternalService (Service Access).
        - If Service Access, X-Client-ID IS REQUIRED to identify the target client.
     """
     
@@ -42,7 +42,7 @@ def get_current_client(
         return client
 
     # 2. Try Service Access (e.g. Orchestrator acting on behalf of a client)
-    statement = select(InferenceClient).where(InferenceClient.api_key == x_api_key)
+    statement = select(InternalService).where(InternalService.api_key == x_api_key)
     service = session.exec(statement).first()
     
     if service:
@@ -80,12 +80,12 @@ def get_current_client(
         detail="Invalid API Key"
     )
 
-def get_inference_service(
+def get_internal_service(
     x_api_key: str = Header(..., description="API Key for internal service authentication"),
     session: Session = Depends(get_session)
-) -> InferenceClient:
-    """Authenticates internal services (like InferenceCenter)."""
-    statement = select(InferenceClient).where(InferenceClient.api_key == x_api_key)
+) -> InternalService:
+    """Authenticates internal services (Orchestrator, InferenceCenter, Transcriptor, etc.)."""
+    statement = select(InternalService).where(InternalService.api_key == x_api_key)
     service = session.exec(statement).first()
     
     if not service:
@@ -124,7 +124,7 @@ def get_any_authenticated_caller(
         return client
 
     # 2. Try Service Access
-    statement = select(InferenceClient).where(InferenceClient.api_key == x_api_key)
+    statement = select(InternalService).where(InternalService.api_key == x_api_key)
     service = session.exec(statement).first()
     
     if service:
