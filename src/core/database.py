@@ -158,13 +158,13 @@ def bootstrap_clients(session: Session):
                  id=c_data["name"],
                  name=c_data["name"],
                  client_key=c_data["key"],
-                 client_type=ClientType(c_data.get("type", ClientType.CHAT)),
+                 client_type=ClientType(c_data.get("type", ClientType.CHAT).upper()),
                  is_active=True
              )
              session.add(new_client)
         else:
              print(f"✅ Cliente ya existe: {c_data['name']}")
-             new_type = ClientType(c_data.get("type", ClientType.CHAT))
+             new_type = ClientType(c_data.get("type", ClientType.CHAT).upper())
              if existing.client_type != new_type:
                  existing.client_type = new_type
                  session.add(existing)
