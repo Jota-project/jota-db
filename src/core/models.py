@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from enum import Enum
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship
 
@@ -84,16 +85,21 @@ class AIModel(BaseStringModel, table=True):
     description: Optional[str] = None
 
     # Relación inversa: conversaciones que usan este modelo
-    conversations: List["Conversation"] = Relationship(back_populates="ai_model")
+    conversations: List["Conversation"] = Relationship(back_populates="model")
     # Relación inversa: mensajes generados con este modelo
     messages: List["Message"] = Relationship(back_populates="ai_model")
 
 # --- CHAT LAYER (User Facing) ---
+class ClientType(str, Enum):
+    CHAT = "CHAT"
+    QUICK = "QUICK"
+
 class Client(BaseStringModel, table=True):
     name: str # Mantenemos name para la UI si hace falta
     client_key: str = Field(unique=True, index=True) # La llave que enviará JotaDesktop
     is_active: bool = Field(default=True)
-    
+    client_type: ClientType = Field(default=ClientType.CHAT)
+
     # Relación: Un cliente puede tener muchas conversaciones
     conversations: List["Conversation"] = Relationship(back_populates="client")
 
@@ -106,20 +112,21 @@ class Conversation(BaseNumericModel, table=True):
     client: Client = Relationship(back_populates="conversations")
     
     # Modelo de IA activo para esta conversación (puede cambiar)
-    ai_model_id: Optional[str] = Field(default=None, foreign_key="aimodel.id")
-    ai_model: Optional["AIModel"] = Relationship(back_populates="conversations")
+    model_id: Optional[str] = Field(default=None, foreign_key="aimodel.id")
+    model: Optional["AIModel"] = Relationship(back_populates="conversations")
     
     # Relación: Una conversación tiene muchos mensajes
     messages: List["Message"] = Relationship(back_populates="conversation")
 
 class Message(BaseUUIDModel, table=True):
     content: str
-    role: str # user, assistant, system
-    
+    role: str # user, assistant, system, tool
+    metadata: Optional[str] = None  # JSON string for tool metadata etc.
+
     # Vinculación con Conversation (Conversation usa int)
     conversation_id: int = Field(foreign_key="conversation.id")
     conversation: Conversation = Relationship(back_populates="messages")
-    
+
     # Modelo de IA que generó este mensaje (relevante para mensajes de rol "assistant")
     ai_model_id: Optional[str] = Field(default=None, foreign_key="aimodel.id")
     ai_model: Optional["AIModel"] = Relationship(back_populates="messages")

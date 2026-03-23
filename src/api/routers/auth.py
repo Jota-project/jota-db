@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 from typing import Optional
 
 from src.core.database import get_session
-from src.core.models import InferenceClient, Client
+from src.core.models import InternalService, Client
 from src.api.security import verify_api_key
 
 router = APIRouter(
@@ -12,7 +12,7 @@ router = APIRouter(
     responses={404: {"description": "Not found"}}
 )
 
-@router.get("/internal", response_model=InferenceClient)
+@router.get("/internal", response_model=InternalService)
 def validate_internal_client(
     x_service_id: str = Header(..., alias="X-Service-ID", description="Service Identifier"),
     x_api_key: str = Header(..., alias="X-API-Key", description="Service API Key"),
@@ -23,7 +23,7 @@ def validate_internal_client(
     Valida un servicio interno (ej: JotaOrchestrator) para permitir el uso del motor de C++.
     Requires Bearer token + X-Service-ID + X-API-Key headers.
     """
-    statement = select(InferenceClient).where(InferenceClient.id == x_service_id)
+    statement = select(InternalService).where(InternalService.id == x_service_id)
     client = session.exec(statement).first()
     
     if not client:
