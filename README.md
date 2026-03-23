@@ -121,7 +121,7 @@ curl "http://localhost:8000/reminders?is_completed=false"
 
 ### Auth (Autenticación)
 
-#### Validar servicio interno (InferenceClient)
+#### Validar servicio interno (InternalService)
 ```bash
 curl "http://localhost:8000/auth/internal" \
   -H "X-Service-ID: JotaOrchestrator" \

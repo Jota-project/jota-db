@@ -33,7 +33,7 @@ Valida la identidad de un **Cliente Externo** (ej. JotaDesktop, un móvil, un fr
 ---
 
 ## `GET /internal`
-Valida la identidad de un **Servicio Interno** (Infraestructura, ej. InferenceCenter en C++, Orquestador en Python). Esta ruta comprueba contra la tabla `InferenceClient`.
+Valida la identidad de un **Servicio Interno** (Infraestructura, ej. InferenceCenter en C++, Orquestador en Python, Transcriptor). Esta ruta comprueba contra la tabla `InternalService`.
 
 **Headers Requeridos**:
 - `Authorization: Bearer <API_SECRET_KEY>`: Clave maestra global definida en `.env`.

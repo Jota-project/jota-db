@@ -70,9 +70,9 @@ class Reminder(BaseUUIDModel, table=True):
     event_id: Optional[str] = Field(default=None, foreign_key="event.id")
     event: Optional[Event] = Relationship(back_populates="reminders")
 
-# --- INFERENCE LAYER (Internal System) ---
-class InferenceClient(BaseStringModel, table=True):
-    # El id heredado ahora juega el rol de identificador (ej: "jota_orchestrator")
+# --- INTERNAL SERVICES LAYER ---
+class InternalService(BaseStringModel, table=True):
+    # El id heredado juega el rol de identificador (ej: "jota_orchestrator", "inference_center", "transcriptor")
     api_key: str # Clave secreta
     is_active: bool = Field(default=True)
 

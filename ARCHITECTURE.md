@@ -47,7 +47,7 @@ app.include_router(chat.router)
 ### `routers/auth.py` - Router de Autenticación
 Maneja la seguridad para dos tipos de clientes:
 
-1. **Internos (InferenceClient)**: Servicios como el Orquestador que acceden al motor de inferencia.
+1. **Internos (InternalService)**: Servicios como el Orquestador, InferenceCenter o Transcriptor.
 2. **Externos (Client)**: Aplicaciones de usuario como JotaDesktop.
 
 **Endpoints**:
