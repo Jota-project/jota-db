@@ -81,7 +81,7 @@ def sync_local_models(session: Session):
     from sqlmodel import select
     
     models_dir = os.getenv("MODELS_DIR", "./models")
-    host_models_dir = os.getenv("HOST_MODELS_DIR", "/home/sito/JotaDB/models")
+    host_models_dir = os.getenv("HOST_MODELS_DIR", "/home/sito/jota-db/models")
     if not os.path.exists(models_dir):
         print(f"⚠️ El directorio de modelos '{models_dir}' no existe. Saltando sincronización...")
         return
@@ -127,7 +127,7 @@ def bootstrap_clients(session: Session):
     """
     Carga los clientes externos (ej: Desktop App) desde variables de entorno.
     """
-    from src.core.models import Client
+    from src.core.models import Client, ClientType
     from sqlmodel import select
 
     import json
@@ -158,11 +158,17 @@ def bootstrap_clients(session: Session):
                  id=c_data["name"],
                  name=c_data["name"],
                  client_key=c_data["key"],
+                 client_type=ClientType(c_data.get("type", ClientType.CHAT)),
                  is_active=True
              )
              session.add(new_client)
         else:
              print(f"✅ Cliente ya existe: {c_data['name']}")
+             new_type = ClientType(c_data.get("type", ClientType.CHAT))
+             if existing.client_type != new_type:
+                 existing.client_type = new_type
+                 session.add(existing)
+                 print(f"🔄 Actualizando tipo de cliente {c_data['name']} a {new_type}")
     
     session.commit()
 
