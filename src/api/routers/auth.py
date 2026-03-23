@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
 from sqlmodel import Session, select
 from typing import Optional
+from pydantic import BaseModel
 
 from src.core.database import get_session
 from src.core.models import InferenceClient, Client
@@ -11,6 +12,27 @@ router = APIRouter(
     tags=["Auth"],
     responses={404: {"description": "Not found"}}
 )
+
+class TokenValidateRequest(BaseModel):
+    token: str
+
+class TokenValidateResponse(BaseModel):
+    valid: bool
+    client_id: Optional[str] = None
+    client_name: Optional[str] = None
+
+@router.post("/validate", response_model=TokenValidateResponse)
+def validate_token(
+    body: TokenValidateRequest,
+    session: Session = Depends(get_session),
+    _: bool = Depends(verify_api_key)
+):
+    """Validates a client token. Used by jota-speaker."""
+    statement = select(Client).where(Client.client_key == body.token)
+    client = session.exec(statement).first()
+    if not client or not client.is_active:
+        return TokenValidateResponse(valid=False)
+    return TokenValidateResponse(valid=True, client_id=client.id, client_name=client.name)
 
 @router.get("/internal", response_model=InferenceClient)
 def validate_internal_client(

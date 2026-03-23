@@ -19,12 +19,12 @@ router = APIRouter(
 # --- DTOs ---
 class ConversationCreate(BaseModel):
     title: Optional[str] = None
-    ai_model_id: Optional[str] = None  # Modelo de IA inicial para esta conversación
+    model_id: Optional[str] = None  # Modelo de IA inicial para esta conversación
 
 class ConversationUpdate(BaseModel):
     """Permite actualizar campos mutables de una conversación, como el modelo de IA activo."""
     title: Optional[str] = None
-    ai_model_id: Optional[str] = None
+    model_id: Optional[str] = None
     status: Optional[str] = None
 
 
@@ -32,11 +32,13 @@ class MessageRole(str, Enum):
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
+    TOOL = "tool"
 
 class MessageCreate(BaseModel):
     role: MessageRole
     content: str
     ai_model_id: Optional[str] = None  # Modelo que generó este mensaje (obligatorio para role=assistant)
+    metadata: Optional[str] = None  # JSON string for tool metadata etc.
 
 class AIModelRead(BaseModel):
     id: str
@@ -71,7 +73,7 @@ def create_conversation(
     conversation = Conversation(
         client_id=client.id,
         title=conv_data.title,
-        ai_model_id=conv_data.ai_model_id
+        model_id=conv_data.model_id
     )
     session.add(conversation)
     session.commit()
@@ -110,12 +112,12 @@ def update_conversation(
     if conversation.client_id != client.id:
         raise HTTPException(status_code=403, detail="Not authorized to modify this conversation")
 
-    if update_data.ai_model_id is not None:
+    if update_data.model_id is not None:
         # Verificar que el modelo existe
-        model = session.get(AIModel, update_data.ai_model_id)
+        model = session.get(AIModel, update_data.model_id)
         if not model:
-            raise HTTPException(status_code=404, detail=f"AI model '{update_data.ai_model_id}' not found")
-        conversation.ai_model_id = update_data.ai_model_id
+            raise HTTPException(status_code=404, detail=f"AI model '{update_data.model_id}' not found")
+        conversation.model_id = update_data.model_id
 
     if update_data.title is not None:
         conversation.title = update_data.title
@@ -173,7 +175,8 @@ def create_message(
         conversation_id=conversation_id,
         role=message_data.role.value,
         content=message_data.content,
-        ai_model_id=message_data.ai_model_id
+        ai_model_id=message_data.ai_model_id,
+        metadata=message_data.metadata
     )
     
     # Actualizar timestamp de la conversación
