@@ -91,14 +91,14 @@ class AIModel(BaseStringModel, table=True):
 
 # --- CHAT LAYER (User Facing) ---
 class ClientType(str, Enum):
-    voice = "voice"
-    chat = "chat"
+    CHAT = "CHAT"
+    QUICK = "QUICK"
 
 class Client(BaseStringModel, table=True):
     name: str # Mantenemos name para la UI si hace falta
     client_key: str = Field(unique=True, index=True) # La llave que enviará JotaDesktop
     is_active: bool = Field(default=True)
-    client_type: ClientType = Field(default=ClientType.chat)
+    client_type: ClientType = Field(default=ClientType.CHAT)
 
     # Relación: Un cliente puede tener muchas conversaciones
     conversations: List["Conversation"] = Relationship(back_populates="client")
