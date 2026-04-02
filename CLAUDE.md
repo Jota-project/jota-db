@@ -78,5 +78,23 @@ Dependencias relevantes en `src/api/dependencies.py`:
 
 ## Issues abiertas
 
-- **#4** — `POST /auth/validate` requerido por jota-speaker (eliminado de PR #5 por ser incorrecto, pendiente reimplementar)
-- **#6** — `HOST_MODELS_DIR` tiene fallback hardcodeado, hay que añadirlo al `.env.example` y eliminar el path fijo
+No hay issues abiertas en este repo. Todas las de Fase 0 están resueltas.
+
+## Cambios de API relevantes para servicios consumidores
+
+### `Message.extra_data` (antes `metadata`)
+
+El campo `metadata` fue renombrado a `extra_data` en el modelo `Message` y en el DTO `MessageCreate` (`src/api/routers/chat.py`).
+
+**Afecta a**: jota-orchestrator al llamar a `POST /chat/{conversation_id}/messages`.
+Enviar `metadata` en el body será ignorado silenciosamente — usar `extra_data`.
+
+### Historial de issues cerradas
+
+| # | Título | Resolución |
+|---|---|---|
+| #1 | client_type ausente en Client | ✅ PR #5 |
+| #2 | MessageRole sin tool + Message sin metadata | ✅ PR #5 (campo renombrado a extra_data) |
+| #3 | model_id vs ai_model_id | ✅ PR #5 |
+| #4 | /auth/validate no existe | ✅ Cerrada — error de diseño en jota-speaker, no en jota-db |
+| #6 | HOST_MODELS_DIR hardcodeado | ✅ PR #9 |
