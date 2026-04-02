@@ -121,7 +121,7 @@ class Conversation(BaseNumericModel, table=True):
 class Message(BaseUUIDModel, table=True):
     content: str
     role: str # user, assistant, system, tool
-    metadata: Optional[str] = None  # JSON string for tool metadata etc.
+    extra_data: Optional[str] = None  # JSON string for tool metadata etc.
 
     # Vinculación con Conversation (Conversation usa int)
     conversation_id: int = Field(foreign_key="conversation.id")
