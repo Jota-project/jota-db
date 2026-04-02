@@ -81,11 +81,14 @@ def sync_local_models(session: Session):
     from sqlmodel import select
     
     models_dir = os.getenv("MODELS_DIR", "./models")
-    host_models_dir = os.getenv("HOST_MODELS_DIR", "/home/sito/jota-db/models")
+    host_models_dir = os.getenv("HOST_MODELS_DIR")
+    if not host_models_dir:
+        print("⚠️ HOST_MODELS_DIR no está definida. Los file_path de los modelos se guardarán con la ruta del contenedor.")
+        host_models_dir = models_dir
     if not os.path.exists(models_dir):
         print(f"⚠️ El directorio de modelos '{models_dir}' no existe. Saltando sincronización...")
         return
-        
+
     print(f"🚀 Escaneando directorio de modelos: {models_dir} (Host config: {host_models_dir})")
     
     for folder_name in os.listdir(models_dir):

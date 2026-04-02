@@ -38,7 +38,7 @@ class MessageCreate(BaseModel):
     role: MessageRole
     content: str
     ai_model_id: Optional[str] = None  # Modelo que generó este mensaje (obligatorio para role=assistant)
-    metadata: Optional[str] = None  # JSON string for tool metadata etc.
+    extra_data: Optional[str] = None  # JSON string for tool metadata etc.
 
 class AIModelRead(BaseModel):
     id: str
@@ -191,7 +191,7 @@ def create_message(
         role=message_data.role.value,
         content=message_data.content,
         ai_model_id=message_data.ai_model_id,
-        metadata=message_data.metadata
+        extra_data=message_data.extra_data
     )
     
     # Actualizar timestamp de la conversación
