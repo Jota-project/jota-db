@@ -44,7 +44,16 @@ def bootstrap_system_clients(session: Session):
         {
             "id": os.getenv("INTERNAL_TRANSCRIPTOR_ID"),
             "key": os.getenv("INTERNAL_TRANSCRIPTOR_KEY")
+        },
+        {
+            "id": os.getenv("INTERNAL_SPEAKER_ID"),
+            "key": os.getenv("INTERNAL_SPEAKER_KEY")
+        },
+        {
+            "id": os.getenv("INTERNAL_GATEWAY_ID"),
+            "key": os.getenv("INTERNAL_GATEWAY_KEY")
         }
+
     ]
 
     print("🚀 Verificando servicios internos (Bootstrap)...")
