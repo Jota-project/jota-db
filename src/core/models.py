@@ -102,6 +102,23 @@ class Client(BaseStringModel, table=True):
 
     # Relación: Un cliente puede tener muchas conversaciones
     conversations: List["Conversation"] = Relationship(back_populates="client")
+    # Relación: Un cliente tiene una configuración (1:1)
+    config: Optional["ClientConfig"] = Relationship(back_populates="client")
+
+class ClientConfig(BaseUUIDModel, table=True):
+    client_id: str = Field(foreign_key="client.id", unique=True)
+    client: Client = Relationship(back_populates="config")
+
+    stt_language: str = Field(default="es")
+    stt_model: Optional[str] = None
+    stt_vad_thold: float = Field(default=0.0)
+    tts_voice: str = Field(default="af_heart")
+    tts_speed: float = Field(default=1.0)
+    preferred_model_id: Optional[str] = Field(default=None, foreign_key="aimodel.id")
+    system_prompt_extra: Optional[str] = None
+    barge_in_enabled: bool = Field(default=True)
+    barge_in_min_chars: int = Field(default=5)
+    conversation_memory_limit: int = Field(default=20)
 
 class Conversation(BaseNumericModel, table=True):
     title: Optional[str] = None
