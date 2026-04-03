@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 from typing import Optional
 
 from src.core.database import get_session
-from src.core.models import InternalService, Client, ClientConfig
+from src.core.models import InternalService, Client, ClientConfig, SessionResponse
 from src.api.security import verify_api_key
 
 router = APIRouter(
@@ -47,7 +47,7 @@ def validate_internal_client(
         
     return client
 
-@router.get("/session")
+@router.get("/session", response_model=SessionResponse)
 def get_session_context(
     x_api_key: str = Header(..., alias="X-API-Key", description="Client Key"),
     session: Session = Depends(get_session),

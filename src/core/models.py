@@ -3,6 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship
+from pydantic import BaseModel
 
 # --- CLASE BASE (Para no repetir campos en todas las tablas) ---
 class BaseUUIDModel(SQLModel):
@@ -147,3 +148,12 @@ class Message(BaseUUIDModel, table=True):
     # Modelo de IA que generó este mensaje (relevante para mensajes de rol "assistant")
     ai_model_id: Optional[str] = Field(default=None, foreign_key="aimodel.id")
     ai_model: Optional["AIModel"] = Relationship(back_populates="messages")
+
+# --- RESPONSE SCHEMAS (no son tablas) ---
+class SessionResponse(BaseModel):
+    """Respuesta de GET /auth/session — identidad completa del cliente para el handshake."""
+    client: Client
+    config: ClientConfig
+
+    class Config:
+        from_attributes = True

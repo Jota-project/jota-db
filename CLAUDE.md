@@ -47,11 +47,14 @@ Copiar `.env.example` a `.env`. Las críticas:
 InternalService      — servicios del sistema (Orchestrator, InferenceCenter, Transcriptor)
 AIModel              — catálogo de modelos .gguf disponibles
 Client               — aplicaciones de usuario (jota-desktop=CHAT, jota-pill=QUICK)
+  └── ClientConfig   — preferencias por cliente (STT, TTS, modelo, barge-in, etc.)
   └── Conversation   — sesión de chat de un cliente, con modelo de IA activo
         └── Message  — mensajes individuales (roles: user/assistant/system/tool)
 ```
 
 `ClientType` es un enum `CHAT | QUICK`: CHAT para conversación completa con historial, QUICK para queries sin contexto.
+
+`ClientConfig` tiene relación 1:1 con `Client`. Se auto-crea con defaults en el bootstrap. Campos clave: `stt_language`, `stt_vad_thold`, `tts_voice`, `tts_speed`, `preferred_model_id`, `barge_in_enabled`, `conversation_memory_limit`.
 
 ### Autenticación (dos capas)
 
@@ -73,12 +76,37 @@ Dependencias relevantes en `src/api/dependencies.py`:
 1. Espera a que PostgreSQL esté listo (retry con backoff)
 2. Crea tablas con `SQLModel.metadata.create_all()`
 3. `bootstrap_system_clients()` — crea/verifica InternalServices desde env
-4. `bootstrap_clients()` — crea/actualiza Clients desde `JOTA_CLIENTS`, incluyendo `client_type`
+4. `bootstrap_clients()` — crea/actualiza Clients desde `JOTA_CLIENTS`, incluyendo `client_type` y auto-crea `ClientConfig` si falta
 5. `sync_local_models()` — registra ficheros `.gguf` nuevos en `MODELS_DIR`
+
+## Endpoints relevantes para servicios consumidores
+
+### `GET /auth/session` — handshake del gateway (PR #11)
+
+Endpoint principal para jota-gateway. Resuelve `client_key → Client + ClientConfig` en una sola llamada.
+
+```
+GET /auth/session
+Authorization: Bearer <API_SECRET_KEY>
+X-API-Key: <client_key>
+
+→ { "client": { "id": "...", "name": "...", "is_active": true, ... },
+    "config": { "stt_language": "es", "tts_voice": "af_heart", ... } }
+```
+
+Auto-crea `ClientConfig` con defaults si el cliente no tiene uno. 401 si key inválida, 403 si inactivo.
+
+### `GET|PUT /config/me` y `POST /config/me/reset` — configuración por cliente (PR #11)
+
+Auth: Bearer + `X-API-Key` (client_key directa o service key + `X-Client-ID`).
+
+- `GET /config/me` — devuelve ClientConfig del cliente autenticado
+- `PUT /config/me` — actualización parcial (solo campos enviados); 422 si campo desconocido
+- `POST /config/me/reset` — restaura todos los campos a defaults
 
 ## Issues abiertas
 
-No hay issues abiertas en este repo. Todas las de Fase 0 están resueltas.
+No hay issues abiertas en este repo. Fase 0 completada. Fase 1 Paso 1 completada (PR #11).
 
 ## Cambios de API relevantes para servicios consumidores
 
@@ -98,3 +126,4 @@ Enviar `metadata` en el body será ignorado silenciosamente — usar `extra_data
 | #3 | model_id vs ai_model_id | ✅ PR #5 |
 | #4 | /auth/validate no existe | ✅ Cerrada — error de diseño en jota-speaker, no en jota-db |
 | #6 | HOST_MODELS_DIR hardcodeado | ✅ PR #9 |
+| #11 | ClientConfig + GET /auth/session + /config/me | ✅ PR #11 (Fase 1 Paso 1) |
