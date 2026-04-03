@@ -130,7 +130,7 @@ def bootstrap_clients(session: Session):
     """
     Carga los clientes externos (ej: Desktop App) desde variables de entorno.
     """
-    from src.core.models import Client, ClientType
+    from src.core.models import Client, ClientConfig, ClientType
     from sqlmodel import select
 
     import json
@@ -165,6 +165,9 @@ def bootstrap_clients(session: Session):
                  is_active=True
              )
              session.add(new_client)
+             session.flush()
+             session.add(ClientConfig(client_id=new_client.id))
+             print(f"🛠️  Creando ClientConfig para: {c_data['name']}")
         else:
              print(f"✅ Cliente ya existe: {c_data['name']}")
              new_type = ClientType(c_data.get("type", ClientType.CHAT).upper())
@@ -172,7 +175,12 @@ def bootstrap_clients(session: Session):
                  existing.client_type = new_type
                  session.add(existing)
                  print(f"🔄 Actualizando tipo de cliente {c_data['name']} a {new_type}")
-    
+             # Garantizar que tenga ClientConfig aunque sea un cliente antiguo
+             config = session.exec(select(ClientConfig).where(ClientConfig.client_id == existing.id)).first()
+             if not config:
+                 session.add(ClientConfig(client_id=existing.id))
+                 print(f"🛠️  Creando ClientConfig para cliente existente: {c_data['name']}")
+
     session.commit()
 
 def init_db():

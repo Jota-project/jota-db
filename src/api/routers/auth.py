@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 from typing import Optional
 
 from src.core.database import get_session
-from src.core.models import InternalService, Client
+from src.core.models import InternalService, Client, ClientConfig, SessionResponse
 from src.api.security import verify_api_key
 
 router = APIRouter(
@@ -46,6 +46,42 @@ def validate_internal_client(
         )
         
     return client
+
+@router.get("/session", response_model=SessionResponse)
+def get_session_context(
+    x_api_key: str = Header(..., alias="X-API-Key", description="Client Key"),
+    session: Session = Depends(get_session),
+    _: bool = Depends(verify_api_key)
+):
+    """
+    Resuelve client_key → Client + ClientConfig en una sola llamada.
+    Usado por el gateway en el handshake WS para obtener la identidad completa del cliente.
+    Auto-crea ClientConfig si el cliente no tiene uno aún.
+    """
+    statement = select(Client).where(Client.client_key == x_api_key)
+    client = session.exec(statement).first()
+
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Client not found"
+        )
+
+    if not client.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Client is inactive"
+        )
+
+    config = session.exec(select(ClientConfig).where(ClientConfig.client_id == client.id)).first()
+    if not config:
+        config = ClientConfig(client_id=client.id)
+        session.add(config)
+        session.commit()
+        session.refresh(config)
+
+    return {"client": client, "config": config}
+
 
 @router.get("/client", response_model=Client)
 def validate_external_client(

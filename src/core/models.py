@@ -3,6 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship
+from pydantic import BaseModel
 
 # --- CLASE BASE (Para no repetir campos en todas las tablas) ---
 class BaseUUIDModel(SQLModel):
@@ -102,6 +103,23 @@ class Client(BaseStringModel, table=True):
 
     # Relación: Un cliente puede tener muchas conversaciones
     conversations: List["Conversation"] = Relationship(back_populates="client")
+    # Relación: Un cliente tiene una configuración (1:1)
+    config: Optional["ClientConfig"] = Relationship(back_populates="client")
+
+class ClientConfig(BaseUUIDModel, table=True):
+    client_id: str = Field(foreign_key="client.id", unique=True)
+    client: Client = Relationship(back_populates="config")
+
+    stt_language: str = Field(default="es")
+    stt_model: Optional[str] = None
+    stt_vad_thold: float = Field(default=0.0)
+    tts_voice: str = Field(default="af_heart")
+    tts_speed: float = Field(default=1.0)
+    preferred_model_id: Optional[str] = Field(default=None, foreign_key="aimodel.id")
+    system_prompt_extra: Optional[str] = None
+    barge_in_enabled: bool = Field(default=True)
+    barge_in_min_chars: int = Field(default=5)
+    conversation_memory_limit: int = Field(default=20)
 
 class Conversation(BaseNumericModel, table=True):
     title: Optional[str] = None
@@ -130,3 +148,12 @@ class Message(BaseUUIDModel, table=True):
     # Modelo de IA que generó este mensaje (relevante para mensajes de rol "assistant")
     ai_model_id: Optional[str] = Field(default=None, foreign_key="aimodel.id")
     ai_model: Optional["AIModel"] = Relationship(back_populates="messages")
+
+# --- RESPONSE SCHEMAS (no son tablas) ---
+class SessionResponse(BaseModel):
+    """Respuesta de GET /auth/session — identidad completa del cliente para el handshake."""
+    client: Client
+    config: ClientConfig
+
+    class Config:
+        from_attributes = True
