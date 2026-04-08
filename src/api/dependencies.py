@@ -4,7 +4,7 @@ from sqlmodel import Session, select
 from typing import Optional
 
 from src.core.database import get_session
-from src.core.models import Client, InternalService
+from src.core.models import Client, InternalService, AdminUser
 
 def get_current_client(
     x_api_key: str = Header(..., description="API Key for authentication"),
@@ -144,12 +144,8 @@ def get_any_authenticated_caller(
 def get_admin_user(
     x_api_key: str = Header(..., description="Admin API Key"),
     session: Session = Depends(get_session),
-) -> "AdminUser":
-    """
-    Autentica al administrador del sistema.
-    Comprueba X-API-Key contra AdminUser.api_key en DB.
-    """
-    from src.core.models import AdminUser
+) -> AdminUser:
+    """Authenticates the system admin via X-API-Key against AdminUser.api_key in DB."""
     admin = session.get(AdminUser, "admin")
     if not admin or admin.api_key != x_api_key:
         raise HTTPException(
