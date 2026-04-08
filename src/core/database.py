@@ -192,6 +192,141 @@ def bootstrap_clients(session: Session):
 
     session.commit()
 
+def bootstrap_admin(session: Session):
+    """Crea el AdminUser desde ADMIN_KEY si no existe. Idempotente."""
+    from src.core.models import AdminUser
+
+    admin_key = os.getenv("ADMIN_KEY")
+    if not admin_key:
+        print("⚠️  ADMIN_KEY no definida. Usuario admin no creado.")
+        return
+
+    existing = session.get(AdminUser, "admin")
+    if not existing:
+        print("🛠️  Creando usuario admin...")
+        session.add(AdminUser(id="admin", api_key=admin_key, is_active=True))
+        session.commit()
+    else:
+        print("✅ Usuario admin ya existe.")
+
+
+def seed_inference_providers(session: Session):
+    """
+    Puebla la tabla inference_provider desde env si está vacía.
+    Provider local siempre. Externos solo si tienen API key.
+    """
+    from src.core.models import InferenceProvider, ProviderType
+    from sqlmodel import select
+
+    existing = session.exec(select(InferenceProvider)).first()
+    if existing:
+        print("✅ InferenceProviders ya existen. Saltando seed.")
+        return
+
+    print("🚀 Seeding inference providers...")
+
+    # Provider local (siempre)
+    local_url = os.getenv("SEED_LOCAL_PROVIDER_URL", "ws://jota-inference:8002")
+    local_model = os.getenv("SEED_LOCAL_MODEL_ID", "llama-3.2-3b")
+    session.add(InferenceProvider(
+        name="Local (jota-inference)",
+        type=ProviderType.local,
+        base_url=local_url,
+        default_model_id=local_model,
+        is_active=True,
+    ))
+    print(f"  ✅ Local provider: {local_url}")
+
+    # OpenAI (solo si hay API key)
+    openai_key = os.getenv("SEED_OPENAI_API_KEY")
+    if openai_key:
+        openai_model = os.getenv("SEED_OPENAI_DEFAULT_MODEL", "gpt-4o")
+        session.add(InferenceProvider(
+            name="OpenAI",
+            type=ProviderType.openai,
+            api_key=openai_key,
+            default_model_id=openai_model,
+            is_active=True,
+        ))
+        print(f"  ✅ OpenAI provider: {openai_model}")
+
+    # Anthropic (solo si hay API key)
+    anthropic_key = os.getenv("SEED_ANTHROPIC_API_KEY")
+    if anthropic_key:
+        anthropic_model = os.getenv("SEED_ANTHROPIC_DEFAULT_MODEL", "claude-sonnet-4-6")
+        session.add(InferenceProvider(
+            name="Anthropic",
+            type=ProviderType.anthropic,
+            api_key=anthropic_key,
+            default_model_id=anthropic_model,
+            is_active=True,
+        ))
+        print(f"  ✅ Anthropic provider: {anthropic_model}")
+
+    session.commit()
+
+
+def seed_service_config(session: Session):
+    """
+    Puebla service_config desde env si está vacía.
+    Debe llamarse DESPUÉS de seed_inference_providers (necesita el UUID del provider local).
+    """
+    from src.core.models import ServiceConfig, InferenceProvider, ProviderType
+    from sqlmodel import select
+
+    existing = session.exec(select(ServiceConfig)).first()
+    if existing:
+        print("✅ ServiceConfig ya existe. Saltando seed.")
+        return
+
+    print("🚀 Seeding service config...")
+
+    entries = []
+
+    # Transcriber
+    transcriber_model = os.getenv("SEED_TRANSCRIBER_MODEL", "whisper-large-v3")
+    entries.append(ServiceConfig(
+        service="transcriber", key="model",
+        value=transcriber_model,
+        description="Modelo de Whisper a usar",
+    ))
+    chunk_ms = os.getenv("SEED_TRANSCRIBER_AUDIO_CHUNK_MS", "200")
+    entries.append(ServiceConfig(
+        service="transcriber", key="audio.chunk_ms",
+        value=int(chunk_ms),
+        description="Tamaño de chunk de audio en ms",
+    ))
+
+    # Speaker
+    speaker_model = os.getenv("SEED_SPEAKER_MODEL", "kokoro-v1")
+    entries.append(ServiceConfig(
+        service="speaker", key="model",
+        value=speaker_model,
+        description="Modelo TTS a usar",
+    ))
+
+    # Orchestrator — apunta al provider local (ya debe existir en DB)
+    local_provider = session.exec(
+        select(InferenceProvider).where(InferenceProvider.type == ProviderType.local)
+    ).first()
+    default_provider_id = local_provider.id if local_provider else None
+    entries.append(ServiceConfig(
+        service="orchestrator", key="default_provider_id",
+        value=default_provider_id,
+        description="UUID del InferenceProvider por defecto",
+    ))
+    entries.append(ServiceConfig(
+        service="orchestrator", key="fallback_provider_id",
+        value=None,
+        description="UUID del InferenceProvider de fallback (null = sin fallback)",
+    ))
+
+    for entry in entries:
+        session.add(entry)
+    session.commit()
+    print(f"  ✅ {len(entries)} entradas de config creadas.")
+
+
 def init_db():
     """
     Inicializa la base de datos: verifica la conexión y crea las tablas.
@@ -223,6 +358,9 @@ def init_db():
                 bootstrap_system_clients(session)
                 bootstrap_clients(session)
                 sync_local_models(session)
+                bootstrap_admin(session)
+                seed_inference_providers(session)
+                seed_service_config(session)
             
             print("🚀 Sistema inicializado correctamente.")
             break
