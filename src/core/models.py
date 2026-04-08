@@ -150,7 +150,9 @@ class Message(BaseUUIDModel, table=True):
     ai_model_id: Optional[str] = Field(default=None, foreign_key="aimodel.id")
     ai_model: Optional["AIModel"] = Relationship(back_populates="messages")
 
+# --- INFERENCE PROVIDER LAYER ---
 class ProviderType(str, Enum):
+    # Valores en minúscula para coincidir con nombres de proveedores externos (openai, anthropic…)
     local = "local"
     openai = "openai"
     anthropic = "anthropic"
@@ -158,6 +160,9 @@ class ProviderType(str, Enum):
 
 
 class ServiceConfig(SQLModel, table=True):
+    # No hereda BaseUUIDModel intencionalmente: es un key-value store.
+    # La PK compuesta (service, key) actúa como identificador único y el
+    # patrón de uso es upsert, no escritura versionada.
     __tablename__ = "service_config"
     service: str = Field(primary_key=True)
     key: str = Field(primary_key=True)
@@ -167,7 +172,6 @@ class ServiceConfig(SQLModel, table=True):
 
 
 class InferenceProvider(BaseUUIDModel, table=True):
-    __tablename__ = "inferenceprovider"
     name: str
     type: ProviderType
     base_url: Optional[str] = None
