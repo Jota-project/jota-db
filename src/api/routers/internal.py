@@ -36,10 +36,10 @@ class ServiceConfigUpsert(BaseModel):
 @router.get("/service-config", response_model=List[ServiceConfig])
 def list_service_config(
     _: bool = Depends(verify_api_key),
-    service: InternalService = Depends(get_internal_service),
+    caller: InternalService = Depends(get_internal_service),
     session: Session = Depends(get_session),
 ):
-    """Lista toda la configuración de servicios."""
+    """Lista toda la configuración de servicios (acceso cross-service intencional: el Orchestrator lee config de todos)."""
     return session.exec(select(ServiceConfig)).all()
 
 
