@@ -4,5 +4,6 @@ sqlmodel
 psycopg2-binary
 python-dotenv
 mcp[server]
-mcp[server]
 requests
+pytest
+httpx
