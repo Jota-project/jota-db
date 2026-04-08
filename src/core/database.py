@@ -205,7 +205,7 @@ def bootstrap_admin(session: Session):
     if not existing:
         print("🛠️  Creando usuario admin...")
         session.add(AdminUser(id="admin", api_key=admin_key, is_active=True))
-        session.commit()
+        session.commit()  # commit único aquí: bootstrap_admin es siempre la primera llamada del bloque admin
     else:
         print("✅ Usuario admin ya existe.")
 
@@ -214,6 +214,10 @@ def seed_inference_providers(session: Session):
     """
     Puebla la tabla inference_provider desde env si está vacía.
     Provider local siempre. Externos solo si tienen API key.
+
+    NOTA: La idempotencia es a nivel de tabla (salta si existe cualquier fila).
+    Si se añaden nuevas SEED_*_API_KEY post-arranque inicial, añadir los
+    providers manualmente vía POST /admin/providers o vaciar la tabla.
     """
     from src.core.models import InferenceProvider, ProviderType
     from sqlmodel import select
@@ -309,6 +313,8 @@ def seed_service_config(session: Session):
     local_provider = session.exec(
         select(InferenceProvider).where(InferenceProvider.type == ProviderType.local)
     ).first()
+    if not local_provider:
+        print("⚠️  No se encontró local provider. orchestrator.default_provider_id quedará None.")
     default_provider_id = local_provider.id if local_provider else None
     entries.append(ServiceConfig(
         service="orchestrator", key="default_provider_id",

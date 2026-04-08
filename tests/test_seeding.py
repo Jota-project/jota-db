@@ -131,3 +131,4 @@ def test_seed_service_config_idempotent(session):
     configs = session.exec(select(ServiceConfig)).all()
     keys = [(c.service, c.key) for c in configs]
     assert len(keys) == len(set(keys))  # Sin duplicados
+    assert len(keys) == 5  # transcriber/model, transcriber/audio.chunk_ms, speaker/model, orchestrator/default_provider_id, orchestrator/fallback_provider_id
