@@ -4,7 +4,7 @@ from sqlmodel import Session, select
 from typing import Optional
 
 from src.core.database import get_session
-from src.core.models import Client, InternalService
+from src.core.models import Client, InternalService, AdminUser
 
 def get_current_client(
     x_api_key: str = Header(..., description="API Key for authentication"),
@@ -114,7 +114,7 @@ def get_any_authenticated_caller(
     # 1. Try Direct Client Access
     statement = select(Client).where(Client.client_key == x_api_key)
     client = session.exec(statement).first()
-    
+
     if client:
         if not client.is_active:
              raise HTTPException(
@@ -126,7 +126,7 @@ def get_any_authenticated_caller(
     # 2. Try Service Access
     statement = select(InternalService).where(InternalService.api_key == x_api_key)
     service = session.exec(statement).first()
-    
+
     if service:
         if not service.is_active:
              raise HTTPException(
@@ -134,9 +134,27 @@ def get_any_authenticated_caller(
                 detail="Service is inactive"
             )
         return service
-        
+
     # 3. Auth Failed
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid API Key"
     )
+
+def get_admin_user(
+    x_api_key: str = Header(..., description="Admin API Key"),
+    session: Session = Depends(get_session),
+) -> AdminUser:
+    """Authenticates the system admin via X-API-Key against AdminUser.api_key in DB."""
+    admin = session.get(AdminUser, "admin")
+    if not admin or admin.api_key != x_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid admin key",
+        )
+    if not admin.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin user is inactive",
+        )
+    return admin

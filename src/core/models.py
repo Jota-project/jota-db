@@ -1,8 +1,9 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, List, Any
 from sqlmodel import SQLModel, Field, Relationship
+from sqlalchemy import Column, JSON as SAJson
 from pydantic import BaseModel
 
 # --- CLASE BASE (Para no repetir campos en todas las tablas) ---
@@ -148,6 +149,43 @@ class Message(BaseUUIDModel, table=True):
     # Modelo de IA que generó este mensaje (relevante para mensajes de rol "assistant")
     ai_model_id: Optional[str] = Field(default=None, foreign_key="aimodel.id")
     ai_model: Optional["AIModel"] = Relationship(back_populates="messages")
+
+# --- INFERENCE PROVIDER LAYER ---
+class ProviderType(str, Enum):
+    # Valores en minúscula para coincidir con nombres de proveedores externos (openai, anthropic…)
+    local = "local"
+    openai = "openai"
+    anthropic = "anthropic"
+    custom = "custom"
+
+
+class ServiceConfig(SQLModel, table=True):
+    # No hereda BaseUUIDModel intencionalmente: es un key-value store.
+    # La PK compuesta (service, key) actúa como identificador único y el
+    # patrón de uso es upsert, no escritura versionada.
+    __tablename__ = "service_config"
+    service: str = Field(primary_key=True)
+    key: str = Field(primary_key=True)
+    value: Optional[Any] = Field(default=None, sa_column=Column(SAJson))
+    description: Optional[str] = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InferenceProvider(BaseUUIDModel, table=True):
+    name: str
+    type: ProviderType
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    default_model_id: Optional[str] = None
+    is_active: bool = Field(default=True)
+    extra_config: Optional[Any] = Field(default=None, sa_column=Column(SAJson))
+
+
+class AdminUser(BaseStringModel, table=True):
+    # id siempre "admin" — sistema single-admin
+    api_key: str
+    is_active: bool = Field(default=True)
+
 
 # --- RESPONSE SCHEMAS (no son tablas) ---
 class SessionResponse(BaseModel):
