@@ -1,6 +1,5 @@
 """
-Router /admin/services/ — gestión admin de InternalService.
-Auth: Bearer <API_SECRET_KEY> + X-API-Key: <ADMIN_KEY>
+Sub-router /admin/services/ — gestión de InternalService.
 """
 from datetime import datetime
 from typing import Optional, List
@@ -13,10 +12,7 @@ from src.core.models import InternalService, AdminUser
 from src.api.dependencies import get_admin_user
 from src.api.security import verify_api_key
 
-router = APIRouter(
-    prefix="/admin/services",
-    tags=["Admin - Services"],
-)
+router = APIRouter(prefix="/services")
 
 
 class ServiceCreate(BaseModel):

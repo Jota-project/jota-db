@@ -1,6 +1,5 @@
 """
-Router /admin/clients/ — gestión admin de Client y ClientConfig.
-Auth: Bearer <API_SECRET_KEY> + X-API-Key: <ADMIN_KEY>
+Sub-router /admin/clients/ — gestión de Client y ClientConfig.
 """
 from datetime import datetime
 from typing import Optional, List
@@ -13,10 +12,7 @@ from src.core.models import Client, ClientConfig, ClientType, AdminUser
 from src.api.dependencies import get_admin_user
 from src.api.security import verify_api_key
 
-router = APIRouter(
-    prefix="/admin/clients",
-    tags=["Admin - Clients"],
-)
+router = APIRouter(prefix="/clients")
 
 
 class ClientCreate(BaseModel):
@@ -29,6 +25,18 @@ class ClientUpdate(BaseModel):
     name: Optional[str] = None
     is_active: Optional[bool] = None
     client_type: Optional[ClientType] = None
+
+
+def _get_client_and_config(client_id: str, session: Session):
+    c = session.get(Client, client_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Client not found")
+    config = session.exec(
+        select(ClientConfig).where(ClientConfig.client_id == client_id)
+    ).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="ClientConfig not found")
+    return c, config
 
 
 # ============================================================
@@ -128,18 +136,6 @@ def deactivate_client(
 # ============================================================
 # CLIENT CONFIG (sub-resource)
 # ============================================================
-
-def _get_client_and_config(client_id: str, session: Session):
-    c = session.get(Client, client_id)
-    if not c:
-        raise HTTPException(status_code=404, detail="Client not found")
-    config = session.exec(
-        select(ClientConfig).where(ClientConfig.client_id == client_id)
-    ).first()
-    if not config:
-        raise HTTPException(status_code=404, detail="ClientConfig not found")
-    return c, config
-
 
 @router.get("/{client_id}/config", response_model=ClientConfig)
 def get_client_config(

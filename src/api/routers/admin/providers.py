@@ -1,10 +1,9 @@
 """
-Router /admin/providers/ — gestión admin de InferenceProvider.
-Auth: Bearer <API_SECRET_KEY> + X-API-Key: <ADMIN_KEY>
+Sub-router /admin/providers/ — gestión de InferenceProvider.
 """
 from datetime import datetime
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -13,10 +12,7 @@ from src.core.models import InferenceProvider, ProviderType, AdminUser
 from src.api.dependencies import get_admin_user
 from src.api.security import verify_api_key
 
-router = APIRouter(
-    prefix="/admin/providers",
-    tags=["Admin - Providers"],
-)
+router = APIRouter(prefix="/providers")
 
 
 class ProviderCreate(BaseModel):

@@ -1,6 +1,5 @@
 """
-Router /admin/config/ — gestión admin de ServiceConfig.
-Auth: Bearer <API_SECRET_KEY> + X-API-Key: <ADMIN_KEY>
+Sub-router /admin/config/ — gestión de ServiceConfig.
 """
 import os
 from datetime import datetime
@@ -14,10 +13,7 @@ from src.core.models import ServiceConfig, InferenceProvider, ProviderType, Admi
 from src.api.dependencies import get_admin_user
 from src.api.security import verify_api_key
 
-router = APIRouter(
-    prefix="/admin/config",
-    tags=["Admin - Config"],
-)
+router = APIRouter(prefix="/config")
 
 
 class ServiceConfigUpsert(BaseModel):
@@ -101,7 +97,6 @@ def delete_config(
 
 def _seed_service_entries_for(service_name: str, session: Session) -> List[ServiceConfig]:
     """Re-genera las entradas de un servicio desde las vars de entorno actuales."""
-    # Borrar entradas actuales del servicio
     existing = session.exec(
         select(ServiceConfig).where(ServiceConfig.service == service_name)
     ).all()
