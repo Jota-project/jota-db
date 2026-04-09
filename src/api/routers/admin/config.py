@@ -4,8 +4,8 @@ Sub-router /admin/config/ — gestión de ServiceConfig.
 import os
 from datetime import datetime
 from typing import Any, Optional, List
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Path
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from src.core.database import get_session
@@ -17,8 +17,8 @@ router = APIRouter(prefix="/config")
 
 
 class ServiceConfigUpsert(BaseModel):
-    value: Any
-    description: Optional[str] = None
+    value: Any = Field(description="Valor a almacenar (cualquier tipo JSON: string, número, bool, objeto, array)")
+    description: Optional[str] = Field(None, description="Descripción legible del campo (se actualiza solo si se envía)")
 
 
 @router.get("", response_model=List[ServiceConfig])
@@ -27,33 +27,46 @@ def list_all_config(
     admin: AdminUser = Depends(get_admin_user),
     session: Session = Depends(get_session),
 ):
-    """Lista toda la configuración de todos los servicios."""
+    """Lista toda la ServiceConfig del sistema.
+
+    Devuelve todas las entradas de configuración de todos los servicios.
+    """
     return session.exec(select(ServiceConfig)).all()
 
 
 @router.get("/{service_name}", response_model=List[ServiceConfig])
 def get_config_by_service(
-    service_name: str,
+    service_name: str = Path(description="Nombre del servicio (ej: `transcriber`, `speaker`, `orchestrator`)"),
     _: bool = Depends(verify_api_key),
     admin: AdminUser = Depends(get_admin_user),
     session: Session = Depends(get_session),
 ):
-    """Devuelve todas las claves de config de un servicio."""
+    """Lista la ServiceConfig de un servicio concreto.
+
+    Retorna lista vacía si el servicio no tiene entradas registradas.
+    """
     return session.exec(
         select(ServiceConfig).where(ServiceConfig.service == service_name)
     ).all()
 
 
-@router.put("/{service_name}/{key}", response_model=ServiceConfig)
+@router.put(
+    "/{service_name}/{key}",
+    response_model=ServiceConfig,
+)
 def upsert_config(
-    service_name: str,
-    key: str,
-    body: ServiceConfigUpsert,
+    service_name: str = Path(description="Nombre del servicio propietario de la clave"),
+    key: str = Path(description="Nombre de la clave (soporta notación punto, ej: `audio.chunk_ms`)"),
+    body: ServiceConfigUpsert = ...,
     _: bool = Depends(verify_api_key),
     admin: AdminUser = Depends(get_admin_user),
     session: Session = Depends(get_session),
 ):
-    """Crea o actualiza un valor de configuración."""
+    """Crea o actualiza una entrada de ServiceConfig.
+
+    Si la clave `{service_name}/{key}` ya existe la sobreescribe; si no, la crea.
+    El campo `description` solo se actualiza si se incluye en el body.
+    """
     entry = session.exec(
         select(ServiceConfig).where(
             ServiceConfig.service == service_name, ServiceConfig.key == key
@@ -75,15 +88,23 @@ def upsert_config(
     return entry
 
 
-@router.delete("/{service_name}/{key}", status_code=204)
+@router.delete(
+    "/{service_name}/{key}",
+    status_code=204,
+    responses={404: {"description": "Entrada de configuración no encontrada"}},
+)
 def delete_config(
-    service_name: str,
-    key: str,
+    service_name: str = Path(description="Nombre del servicio propietario de la clave"),
+    key: str = Path(description="Nombre de la clave a eliminar"),
     _: bool = Depends(verify_api_key),
     admin: AdminUser = Depends(get_admin_user),
     session: Session = Depends(get_session),
 ):
-    """Elimina una entrada de configuración."""
+    """Elimina una entrada de ServiceConfig.
+
+    Retorna 204 sin cuerpo si la operación fue exitosa.
+    Retorna 404 si la clave no existe.
+    """
     entry = session.exec(
         select(ServiceConfig).where(
             ServiceConfig.service == service_name, ServiceConfig.key == key
@@ -150,10 +171,17 @@ def _seed_service_entries_for(service_name: str, session: Session) -> List[Servi
 
 @router.post("/{service_name}/reset", response_model=List[ServiceConfig])
 def reset_service_config(
-    service_name: str,
+    service_name: str = Path(description="Nombre del servicio a resetear (`transcriber`, `speaker`, `orchestrator`)"),
     _: bool = Depends(verify_api_key),
     admin: AdminUser = Depends(get_admin_user),
     session: Session = Depends(get_session),
 ):
-    """Restaura la configuración de un servicio a los defaults de las vars de entorno."""
+    """Restaura la ServiceConfig de un servicio a los defaults.
+
+    Borra todas las entradas actuales del servicio y las regenera desde las
+    variables de entorno `SEED_*`. Útil para revertir cambios manuales.
+
+    Servicios soportados: `transcriber`, `speaker`, `orchestrator`.
+    Para otros nombres retorna lista vacía (sin error).
+    """
     return _seed_service_entries_for(service_name, session)

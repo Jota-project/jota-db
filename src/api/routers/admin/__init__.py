@@ -6,7 +6,14 @@ from fastapi import APIRouter
 
 from . import config, providers, clients, services
 
-router = APIRouter(prefix="/admin", tags=["Admin"])
+router = APIRouter(
+    prefix="/admin",
+    tags=["Admin"],
+    responses={
+        401: {"description": "Bearer token inválido o ADMIN_KEY incorrecta"},
+        403: {"description": "Admin inactivo"},
+    },
+)
 
 router.include_router(config.router)
 router.include_router(providers.router)
