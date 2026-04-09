@@ -7,7 +7,7 @@ Diseñado para ser consumido por humanos y por IAs (futuro MCP Server).
 from fastapi import FastAPI
 
 from src.core.database import init_db
-from src.api.routers import tasks, events, reminders, auth, chat, config, internal
+from src.api.routers import tasks, events, reminders, auth, chat, config, internal, admin_config
 
 app = FastAPI(
     title="Cerebro Digital API",
@@ -51,3 +51,4 @@ app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(config.router)
 app.include_router(internal.router)
+app.include_router(admin_config.router)
