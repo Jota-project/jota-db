@@ -1,10 +1,5 @@
-"""
-Cerebro Digital API - Main Application
-
-API REST para gestionar tu ecosistema de datos personal.
-Diseñado para ser consumido por humanos y por IAs (futuro MCP Server).
-"""
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.core.database import init_db
 from src.api.routers import tasks, events, reminders, auth, chat, config, internal

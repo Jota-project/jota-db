@@ -133,6 +133,10 @@ class Conversation(BaseNumericModel, table=True):
     # Modelo de IA activo para esta conversación (puede cambiar)
     model_id: Optional[str] = Field(default=None, foreign_key="aimodel.id")
     model: Optional["AIModel"] = Relationship(back_populates="conversations")
+
+    # Provider de inferencia asignado a esta conversación (nullable)
+    provider_id: Optional[str] = Field(default=None, foreign_key="inferenceprovider.id")
+    provider: Optional["InferenceProvider"] = Relationship(back_populates="conversations")
     
     # Relación: Una conversación tiene muchos mensajes
     messages: List["Message"] = Relationship(back_populates="conversation")
@@ -179,6 +183,8 @@ class InferenceProvider(BaseUUIDModel, table=True):
     default_model_id: Optional[str] = None
     is_active: bool = Field(default=True)
     extra_config: Optional[Any] = Field(default=None, sa_column=Column(SAJson))
+    
+    conversations: List["Conversation"] = Relationship(back_populates="provider")
 
 
 class AdminUser(BaseStringModel, table=True):
