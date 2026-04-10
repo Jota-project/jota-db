@@ -27,6 +27,7 @@ class ConversationUpdate(BaseModel):
     title: Optional[str] = None
     model_id: Optional[str] = None
     status: Optional[str] = None
+    provider_id: Optional[str] = None
 
 
 class MessageRole(str, Enum):
@@ -125,7 +126,7 @@ def update_conversation(
     client: Client = Depends(get_current_client),
     _: bool = Depends(verify_api_key)
 ):
-    """Actualiza una conversación: puede cambiar el modelo de IA activo, el título o el estado."""
+    """Actualiza una conversación: puede cambiar el modelo de IA activo, el título, el estado o el provider."""
     conversation = session.get(Conversation, conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -133,7 +134,6 @@ def update_conversation(
         raise HTTPException(status_code=403, detail="Not authorized to modify this conversation")
 
     if update_data.model_id is not None:
-        # Verificar que el modelo existe
         model = session.get(AIModel, update_data.model_id)
         if not model:
             raise HTTPException(status_code=404, detail=f"AI model '{update_data.model_id}' not found")
@@ -144,6 +144,16 @@ def update_conversation(
 
     if update_data.status is not None:
         conversation.status = update_data.status
+
+    # provider_id: distinguir "no enviado" de "enviado como null"
+    sent_fields = update_data.model_dump(exclude_unset=True)
+    if "provider_id" in sent_fields:
+        new_provider_id = sent_fields["provider_id"]
+        if new_provider_id is not None:
+            provider = session.get(InferenceProvider, new_provider_id)
+            if not provider:
+                raise HTTPException(status_code=404, detail=f"InferenceProvider '{new_provider_id}' not found")
+        conversation.provider_id = new_provider_id
 
     conversation.updated_at = datetime.utcnow()
     session.add(conversation)
