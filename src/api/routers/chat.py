@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 
 from src.core.database import get_session
-from src.core.models import Conversation, Message, Client, AIModel, InternalService
+from src.core.models import Conversation, Message, Client, AIModel, InternalService, InferenceProvider
 from src.api.dependencies import get_current_client, get_internal_service, get_any_authenticated_caller
 from src.api.security import verify_api_key
 
@@ -20,6 +20,7 @@ router = APIRouter(
 class ConversationCreate(BaseModel):
     title: Optional[str] = None
     model_id: Optional[str] = None  # Modelo de IA inicial para esta conversación
+    provider_id: Optional[str] = None  
 
 class ConversationUpdate(BaseModel):
     """Permite actualizar campos mutables de una conversación, como el modelo de IA activo."""
@@ -68,12 +69,16 @@ def create_conversation(
     _: bool = Depends(verify_api_key)
 ):
     """Crea una nueva conversación para un cliente autenticado"""
-    # El cliente ya viene validado por get_current_client
+    if conv_data.provider_id is not None:
+        provider = session.get(InferenceProvider, conv_data.provider_id)
+        if not provider:
+            raise HTTPException(status_code=404, detail=f"InferenceProvider '{conv_data.provider_id}' not found")
 
     conversation = Conversation(
         client_id=client.id,
         title=conv_data.title,
-        model_id=conv_data.model_id
+        model_id=conv_data.model_id,
+        provider_id=conv_data.provider_id,
     )
     session.add(conversation)
     session.commit()
