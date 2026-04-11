@@ -270,67 +270,108 @@ def seed_inference_providers(session: Session):
     session.commit()
 
 
-def seed_service_config(session: Session):
+def seed_service_configs(session: Session):
     """
-    Puebla service_config desde env si está vacía.
-    Debe llamarse DESPUÉS de seed_inference_providers (necesita el UUID del provider local).
+    Crea los registros de config tipados para cada servicio interno, leyendo
+    valores iniciales desde variables de entorno. Es idempotente: si la config
+    ya existe para un servicio, no la toca.
+    Debe llamarse DESPUÉS de bootstrap_system_clients (necesita que los
+    InternalServices existan) y de seed_inference_providers si se va a
+    usar SEED_ORCHESTRATOR_DEFAULT_PROVIDER_ID.
     """
-    from src.core.models import ServiceConfig, InferenceProvider, ProviderType
+    from src.core.models import (
+        OrchestratorConfig, TranscriberConfig, SpeakerConfig,
+        GatewayConfig, InferenceCenterConfig,
+    )
     from sqlmodel import select
 
-    existing = session.exec(select(ServiceConfig)).first()
-    if existing:
-        print("✅ ServiceConfig ya existe. Saltando seed.")
-        return
+    print("🚀 Seeding service configs...")
 
-    print("🚀 Seeding service config...")
+    def _seed(service_env_key: str, config_factory):
+        service_id = os.getenv(service_env_key)
+        if not service_id:
+            print(f"⚠️  {service_env_key} no definido. Saltando config de este servicio.")
+            return
+        from src.core.models import InternalService
+        svc = session.get(InternalService, service_id)
+        if not svc:
+            print(f"⚠️  InternalService '{service_id}' no encontrado. Saltando.")
+            return
+        config_factory(service_id)
 
-    entries = []
+    # Orchestrator
+    def _orchestrator(service_id: str):
+        existing = session.exec(
+            select(OrchestratorConfig).where(OrchestratorConfig.service_id == service_id)
+        ).first()
+        if existing:
+            print(f"✅ OrchestratorConfig ya existe para: {service_id}")
+            return
+        cfg = OrchestratorConfig(
+            service_id=service_id,
+            default_provider_id=os.getenv("SEED_ORCHESTRATOR_DEFAULT_PROVIDER_ID") or None,
+            fallback_provider_id=os.getenv("SEED_ORCHESTRATOR_FALLBACK_PROVIDER_ID") or None,
+        )
+        session.add(cfg)
+        print(f"🛠️  Creando OrchestratorConfig para: {service_id}")
 
     # Transcriber
-    transcriber_model = os.getenv("SEED_TRANSCRIBER_MODEL", "whisper-large-v3")
-    entries.append(ServiceConfig(
-        service="transcriber", key="model",
-        value=transcriber_model,
-        description="Modelo de Whisper a usar",
-    ))
-    chunk_ms = os.getenv("SEED_TRANSCRIBER_AUDIO_CHUNK_MS", "200")
-    entries.append(ServiceConfig(
-        service="transcriber", key="audio.chunk_ms",
-        value=int(chunk_ms),
-        description="Tamaño de chunk de audio en ms",
-    ))
+    def _transcriber(service_id: str):
+        existing = session.exec(
+            select(TranscriberConfig).where(TranscriberConfig.service_id == service_id)
+        ).first()
+        if existing:
+            print(f"✅ TranscriberConfig ya existe para: {service_id}")
+            return
+        model = os.getenv("SEED_TRANSCRIBER_MODEL", "whisper-large-v3")
+        chunk_ms = int(os.getenv("SEED_TRANSCRIBER_AUDIO_CHUNK_MS", "200"))
+        cfg = TranscriberConfig(service_id=service_id, model=model, audio_chunk_ms=chunk_ms)
+        session.add(cfg)
+        print(f"🛠️  Creando TranscriberConfig para: {service_id}")
 
     # Speaker
-    speaker_model = os.getenv("SEED_SPEAKER_MODEL", "kokoro-v1")
-    entries.append(ServiceConfig(
-        service="speaker", key="model",
-        value=speaker_model,
-        description="Modelo TTS a usar",
-    ))
+    def _speaker(service_id: str):
+        existing = session.exec(
+            select(SpeakerConfig).where(SpeakerConfig.service_id == service_id)
+        ).first()
+        if existing:
+            print(f"✅ SpeakerConfig ya existe para: {service_id}")
+            return
+        model = os.getenv("SEED_SPEAKER_MODEL", "kokoro-v1")
+        cfg = SpeakerConfig(service_id=service_id, model=model)
+        session.add(cfg)
+        print(f"🛠️  Creando SpeakerConfig para: {service_id}")
 
-    # Orchestrator — apunta al provider local (ya debe existir en DB)
-    local_provider = session.exec(
-        select(InferenceProvider).where(InferenceProvider.type == ProviderType.local)
-    ).first()
-    if not local_provider:
-        print("⚠️  No se encontró local provider. orchestrator.default_provider_id quedará None.")
-    default_provider_id = local_provider.id if local_provider else None
-    entries.append(ServiceConfig(
-        service="orchestrator", key="default_provider_id",
-        value=default_provider_id,
-        description="UUID del InferenceProvider por defecto",
-    ))
-    entries.append(ServiceConfig(
-        service="orchestrator", key="fallback_provider_id",
-        value=None,
-        description="UUID del InferenceProvider de fallback (null = sin fallback)",
-    ))
+    # Gateway
+    def _gateway(service_id: str):
+        existing = session.exec(
+            select(GatewayConfig).where(GatewayConfig.service_id == service_id)
+        ).first()
+        if existing:
+            print(f"✅ GatewayConfig ya existe para: {service_id}")
+            return
+        session.add(GatewayConfig(service_id=service_id))
+        print(f"🛠️  Creando GatewayConfig para: {service_id}")
 
-    for entry in entries:
-        session.add(entry)
+    # InferenceCenter
+    def _inference_center(service_id: str):
+        existing = session.exec(
+            select(InferenceCenterConfig).where(InferenceCenterConfig.service_id == service_id)
+        ).first()
+        if existing:
+            print(f"✅ InferenceCenterConfig ya existe para: {service_id}")
+            return
+        session.add(InferenceCenterConfig(service_id=service_id))
+        print(f"🛠️  Creando InferenceCenterConfig para: {service_id}")
+
+    _seed("INTERNAL_ORCHESTRATOR_ID", _orchestrator)
+    _seed("INTERNAL_TRANSCRIPTOR_ID", _transcriber)
+    _seed("INTERNAL_SPEAKER_ID", _speaker)
+    _seed("INTERNAL_GATEWAY_ID", _gateway)
+    _seed("INTERNAL_INFERENCE_ID", _inference_center)
+
     session.commit()
-    print(f"  ✅ {len(entries)} entradas de config creadas.")
+    print("✅ Service configs seeded.")
 
 
 def init_db():
@@ -366,7 +407,7 @@ def init_db():
                 sync_local_models(session)
                 bootstrap_admin(session)
                 seed_inference_providers(session)
-                seed_service_config(session)
+                seed_service_configs(session)
             
             print("🚀 Sistema inicializado correctamente.")
             break
