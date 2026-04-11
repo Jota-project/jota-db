@@ -4,7 +4,12 @@ import os
 os.environ["API_SECRET_KEY"] = "test-master-key"
 os.environ["ADMIN_KEY"] = "test-admin-key"
 os.environ["DATABASE_URL"] = "sqlite://"
-
+# Service IDs para CONFIG_TABLE_MAP en internal.py
+os.environ["INTERNAL_ORCHESTRATOR_ID"] = "test-orchestrator"
+os.environ["INTERNAL_TRANSCRIPTOR_ID"] = "test-transcriptor"
+os.environ["INTERNAL_SPEAKER_ID"] = "test-speaker"
+os.environ["INTERNAL_GATEWAY_ID"] = "test-gateway"
+os.environ["INTERNAL_INFERENCE_ID"] = "test-inference"
 # Patch sqlalchemy.create_engine BEFORE importing app modules so that
 # database.py's module-level engine creation doesn't fail with SQLite.
 import sqlalchemy as _sa
@@ -75,6 +80,7 @@ def admin_headers_fixture(session: Session):
 @pytest.fixture(name="service_headers")
 def service_headers_fixture(session: Session):
     """Crea un InternalService en DB y devuelve los headers correctos."""
+    # id conincide con INTERNAL_ORCHESTRATOR_ID para que pase el check de permissions en internal.py
     svc = InternalService(id="test-orchestrator", api_key="test-service-key", is_active=True)
     session.add(svc)
     session.commit()
