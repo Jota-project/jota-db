@@ -77,7 +77,33 @@ class InternalService(BaseStringModel, table=True):
     # El id heredado juega el rol de identificador (ej: "jota_orchestrator", "inference_center", "transcriptor")
     api_key: str # Clave secreta
     is_active: bool = Field(default=True)
+    
+# --- INTERNAL SERVICE CONFIG LAYER ---
+class OrchestratorConfig(BaseUUIDModel, table=True):
+    service_id: str = Field(foreign_key="internalservice.id", unique=True)
 
+    default_provider_id: Optional[str] = Field(default=None, foreign_key="inferenceprovider.id")
+    fallback_provider_id: Optional[str] = Field(default=None, foreign_key="inferenceprovider.id")
+
+class TranscriberConfig(BaseUUIDModel, table=True):
+    service_id: str = Field(foreign_key="internalservice.id", unique=True)
+
+    model: str = Field(default="whisper-large-v3")
+    audio_chunk_ms: int = Field(default=200)
+
+class SpeakerConfig(BaseUUIDModel, table=True):
+    service_id: str = Field(foreign_key="internalservice.id", unique=True)
+
+    model: str = Field(default="kokoro-v1")
+
+class GatewayConfig(BaseUUIDModel, table=True):
+    service_id: str = Field(foreign_key="internalservice.id", unique=True)
+
+class InferenceCenterConfig(BaseUUIDModel, table=True):
+    service_id: str = Field(foreign_key="internalservice.id", unique=True)
+
+
+#TODO: Con la nueva abstraccion de providers, quizás ya no necesitemos esta tabla y podamos manejar todo desde InferenceProvider
 # --- MODELS CATALOG LAYER ---
 class AIModel(BaseStringModel, table=True):
     name: str
