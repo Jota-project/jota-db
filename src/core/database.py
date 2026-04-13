@@ -192,22 +192,22 @@ def bootstrap_clients(session: Session):
 
     session.commit()
 
-# def bootstrap_admin(session: Session):
-#     """Crea el AdminUser desde ADMIN_KEY si no existe. Idempotente."""
-#     from src.core.models import AdminUser
+def bootstrap_admin(session: Session):
+    """Crea el AdminUser desde ADMIN_KEY si no existe. Idempotente."""
+    from src.core.models import AdminUser
 
-#     admin_key = os.getenv("ADMIN_KEY")
-#     if not admin_key:
-#         print("⚠️  ADMIN_KEY no definida. Usuario admin no creado.")
-#         return
+    admin_key = os.getenv("ADMIN_KEY")
+    if not admin_key:
+        print("⚠️  ADMIN_KEY no definida. Usuario admin no creado.")
+        return
 
-#     existing = session.get(AdminUser, "admin")
-#     if not existing:
-#         print("🛠️  Creando usuario admin...")
-#         session.add(AdminUser(id="admin", api_key=admin_key, is_active=True))
-#         session.commit()  # commit único aquí: bootstrap_admin es siempre la primera llamada del bloque admin
-#     else:
-#         print("✅ Usuario admin ya existe.")
+    existing = session.get(AdminUser, "admin")
+    if not existing:
+        print("🛠️  Creando usuario admin...")
+        session.add(AdminUser(id="admin", api_key=admin_key, is_active=True))
+        session.commit()  # commit único aquí: bootstrap_admin es siempre la primera llamada del bloque admin
+    else:
+        print("✅ Usuario admin ya existe.")
 
 
 def seed_inference_providers(session: Session):
@@ -305,12 +305,21 @@ def seed_service_configs(session: Session):
         if existing:
             print(f"✅ OrchestratorConfig ya existe para: {service_id}")
             return
-        default_pid = (os.getenv("SEED_ORCHESTRATOR_DEFAULT_PROVIDER_ID") or "").strip().lower() or None
-        fallback_pid = (os.getenv("SEED_ORCHESTRATOR_FALLBACK_PROVIDER_ID") or "").strip().lower() or None
+
+        def _resolve_provider(env_key: str) -> str | None:
+            pid = (os.getenv(env_key) or "").strip().lower() or None
+            if pid is None:
+                return None
+            exists = session.get(InferenceProvider, pid)
+            if not exists:
+                print(f"⚠️  Provider '{pid}' ({env_key}) no existe en DB. Se ignorará.")
+                return None
+            return pid
+
         cfg = OrchestratorConfig(
             service_id=service_id,
-            default_provider_id=default_pid,
-            fallback_provider_id=fallback_pid,
+            default_provider_id=_resolve_provider("SEED_ORCHESTRATOR_DEFAULT_PROVIDER_ID"),
+            fallback_provider_id=_resolve_provider("SEED_ORCHESTRATOR_FALLBACK_PROVIDER_ID"),
         )
         session.add(cfg)
         print(f"🛠️  Creando OrchestratorConfig para: {service_id}")
