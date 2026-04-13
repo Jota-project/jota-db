@@ -2,8 +2,15 @@ import os
 import time
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
-from sqlmodel import SQLModel, Session
+from sqlmodel import SQLModel, Session, select
 from dotenv import load_dotenv
+import json
+from src.core.models import (
+    InternalService, AIModel, Client, 
+    ClientConfig, ClientType, InferenceProvider, 
+    ProviderType, OrchestratorConfig, TranscriberConfig, 
+    SpeakerConfig, GatewayConfig, InferenceCenterConfig,
+)
 
 load_dotenv()
 
@@ -28,8 +35,7 @@ def bootstrap_system_clients(session: Session):
     NO toca la tabla Client (usuarios/tablets).
     Es idempotente: si ya existen, no hace nada.
     """
-    from src.core.models import InternalService
-    from sqlmodel import select
+
 
     # Definir los servicios requeridos
     services = [
@@ -86,8 +92,6 @@ def sync_local_models(session: Session):
     y registra automáticamente los .gguf nuevos en la DB.
     Los modelos deben estar en carpetas con su mismo nombre (ej: models/llama3/llama3.gguf).
     """
-    from src.core.models import AIModel
-    from sqlmodel import select
     
     models_dir = os.getenv("MODELS_DIR", "./models")
     host_models_dir = os.getenv("HOST_MODELS_DIR")
@@ -139,10 +143,6 @@ def bootstrap_clients(session: Session):
     """
     Carga los clientes externos (ej: Desktop App) desde variables de entorno.
     """
-    from src.core.models import Client, ClientConfig, ClientType
-    from sqlmodel import select
-
-    import json
     
     clients_to_load = []
 
@@ -192,22 +192,22 @@ def bootstrap_clients(session: Session):
 
     session.commit()
 
-def bootstrap_admin(session: Session):
-    """Crea el AdminUser desde ADMIN_KEY si no existe. Idempotente."""
-    from src.core.models import AdminUser
+# def bootstrap_admin(session: Session):
+#     """Crea el AdminUser desde ADMIN_KEY si no existe. Idempotente."""
+#     from src.core.models import AdminUser
 
-    admin_key = os.getenv("ADMIN_KEY")
-    if not admin_key:
-        print("⚠️  ADMIN_KEY no definida. Usuario admin no creado.")
-        return
+#     admin_key = os.getenv("ADMIN_KEY")
+#     if not admin_key:
+#         print("⚠️  ADMIN_KEY no definida. Usuario admin no creado.")
+#         return
 
-    existing = session.get(AdminUser, "admin")
-    if not existing:
-        print("🛠️  Creando usuario admin...")
-        session.add(AdminUser(id="admin", api_key=admin_key, is_active=True))
-        session.commit()  # commit único aquí: bootstrap_admin es siempre la primera llamada del bloque admin
-    else:
-        print("✅ Usuario admin ya existe.")
+#     existing = session.get(AdminUser, "admin")
+#     if not existing:
+#         print("🛠️  Creando usuario admin...")
+#         session.add(AdminUser(id="admin", api_key=admin_key, is_active=True))
+#         session.commit()  # commit único aquí: bootstrap_admin es siempre la primera llamada del bloque admin
+#     else:
+#         print("✅ Usuario admin ya existe.")
 
 
 def seed_inference_providers(session: Session):
@@ -219,8 +219,7 @@ def seed_inference_providers(session: Session):
     Si se añaden nuevas SEED_*_API_KEY post-arranque inicial, añadir los
     providers manualmente vía POST /admin/providers o vaciar la tabla.
     """
-    from src.core.models import InferenceProvider, ProviderType
-    from sqlmodel import select
+
 
     existing = session.exec(select(InferenceProvider)).first()
     if existing:
@@ -233,6 +232,7 @@ def seed_inference_providers(session: Session):
     local_url = os.getenv("SEED_LOCAL_PROVIDER_URL", "ws://jota-inference:8002")
     local_model = os.getenv("SEED_LOCAL_MODEL_ID", "llama-3.2-3b")
     session.add(InferenceProvider(
+        id="local",
         name="Local (jota-inference)",
         type=ProviderType.local,
         base_url=local_url,
@@ -246,6 +246,7 @@ def seed_inference_providers(session: Session):
     if openai_key:
         openai_model = os.getenv("SEED_OPENAI_DEFAULT_MODEL", "gpt-4o")
         session.add(InferenceProvider(
+            id="openai",
             name="OpenAI",
             type=ProviderType.openai,
             api_key=openai_key,
@@ -259,6 +260,7 @@ def seed_inference_providers(session: Session):
     if anthropic_key:
         anthropic_model = os.getenv("SEED_ANTHROPIC_DEFAULT_MODEL", "claude-sonnet-4-6")
         session.add(InferenceProvider(
+            id="anthropic",
             name="Anthropic",
             type=ProviderType.anthropic,
             api_key=anthropic_key,
@@ -279,11 +281,7 @@ def seed_service_configs(session: Session):
     InternalServices existan) y de seed_inference_providers si se va a
     usar SEED_ORCHESTRATOR_DEFAULT_PROVIDER_ID.
     """
-    from src.core.models import (
-        OrchestratorConfig, TranscriberConfig, SpeakerConfig,
-        GatewayConfig, InferenceCenterConfig,
-    )
-    from sqlmodel import select
+
 
     print("🚀 Seeding service configs...")
 
@@ -307,10 +305,12 @@ def seed_service_configs(session: Session):
         if existing:
             print(f"✅ OrchestratorConfig ya existe para: {service_id}")
             return
+        default_pid = (os.getenv("SEED_ORCHESTRATOR_DEFAULT_PROVIDER_ID") or "").strip().lower() or None
+        fallback_pid = (os.getenv("SEED_ORCHESTRATOR_FALLBACK_PROVIDER_ID") or "").strip().lower() or None
         cfg = OrchestratorConfig(
             service_id=service_id,
-            default_provider_id=os.getenv("SEED_ORCHESTRATOR_DEFAULT_PROVIDER_ID") or None,
-            fallback_provider_id=os.getenv("SEED_ORCHESTRATOR_FALLBACK_PROVIDER_ID") or None,
+            default_provider_id=default_pid,
+            fallback_provider_id=fallback_pid,
         )
         session.add(cfg)
         print(f"🛠️  Creando OrchestratorConfig para: {service_id}")
@@ -405,7 +405,7 @@ def init_db():
                 bootstrap_system_clients(session)
                 bootstrap_clients(session)
                 sync_local_models(session)
-                bootstrap_admin(session)
+                # bootstrap_admin(session)
                 seed_inference_providers(session)
                 seed_service_configs(session)
             

@@ -187,21 +187,8 @@ class ProviderType(str, Enum):
     openai = "openai"
     anthropic = "anthropic"
     custom = "custom"
-
-
-class ServiceConfig(SQLModel, table=True):
-    # No hereda BaseUUIDModel intencionalmente: es un key-value store.
-    # La PK compuesta (service, key) actúa como identificador único y el
-    # patrón de uso es upsert, no escritura versionada.
-    __tablename__ = "service_config"
-    service: str = Field(primary_key=True)
-    key: str = Field(primary_key=True)
-    value: Optional[Any] = Field(default=None, sa_column=Column(SAJson))
-    description: Optional[str] = None
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class InferenceProvider(BaseUUIDModel, table=True):
+class InferenceProvider(BaseStringModel, table=True):
+    # id es el slug estable del provider (ej: "local", "openai", "anthropic")
     name: str
     type: ProviderType
     base_url: Optional[str] = None
@@ -209,7 +196,7 @@ class InferenceProvider(BaseUUIDModel, table=True):
     default_model_id: Optional[str] = None
     is_active: bool = Field(default=True)
     extra_config: Optional[Any] = Field(default=None, sa_column=Column(SAJson))
-    
+
     conversations: List["Conversation"] = Relationship(back_populates="provider")
 
 

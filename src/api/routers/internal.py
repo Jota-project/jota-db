@@ -33,10 +33,10 @@ router = APIRouter(
 # Mapa estático service_id → clase de config.
 # Se evalúa una vez al arrancar; load_dotenv() ya corrió antes.
 CONFIG_TABLE_MAP: dict[str, type] = {k: v for k, v in {
-    os.getenv("INTERNAL_ORCHESTRATOR_ID"): OrchestratorConfig,
-    os.getenv("INTERNAL_TRANSCRIPTOR_ID"): TranscriberConfig,
-    os.getenv("INTERNAL_SPEAKER_ID"):      SpeakerConfig,
-    os.getenv("INTERNAL_GATEWAY_ID"):      GatewayConfig,
+    "orchestrator": OrchestratorConfig,
+    "transcriptor": TranscriberConfig,
+    "speaker":      SpeakerConfig,
+    "gateway":      GatewayConfig,
     os.getenv("INTERNAL_INFERENCE_ID"):    InferenceCenterConfig,
 }.items() if k is not None}
 
@@ -177,7 +177,7 @@ def list_active_providers(
     responses={404: {"description": "Provider no encontrado"}},
 )
 def get_provider(
-    provider_id: str = Path(description="UUID del InferenceProvider"),
+    provider_id: str = Path(description="Slug del InferenceProvider (ej: `local`, `openai`)"),
     _: bool = Depends(verify_api_key),
     caller: InternalService = Depends(get_internal_service),
     session: Session = Depends(get_session),
