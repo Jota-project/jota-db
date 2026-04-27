@@ -2,8 +2,15 @@ import os
 import time
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
-from sqlmodel import SQLModel, Session
+from sqlmodel import SQLModel, Session, select
 from dotenv import load_dotenv
+import json
+from src.core.models import (
+    InternalService, AIModel, Client, 
+    ClientConfig, ClientType, InferenceProvider, 
+    ProviderType, OrchestratorConfig, TranscriberConfig, 
+    SpeakerConfig, GatewayConfig, InferenceCenterConfig,
+)
 
 load_dotenv()
 
@@ -28,8 +35,7 @@ def bootstrap_system_clients(session: Session):
     NO toca la tabla Client (usuarios/tablets).
     Es idempotente: si ya existen, no hace nada.
     """
-    from src.core.models import InternalService
-    from sqlmodel import select
+
 
     # Definir los servicios requeridos
     services = [
@@ -86,8 +92,6 @@ def sync_local_models(session: Session):
     y registra automáticamente los .gguf nuevos en la DB.
     Los modelos deben estar en carpetas con su mismo nombre (ej: models/llama3/llama3.gguf).
     """
-    from src.core.models import AIModel
-    from sqlmodel import select
     
     models_dir = os.getenv("MODELS_DIR", "./models")
     host_models_dir = os.getenv("HOST_MODELS_DIR")
@@ -139,10 +143,6 @@ def bootstrap_clients(session: Session):
     """
     Carga los clientes externos (ej: Desktop App) desde variables de entorno.
     """
-    from src.core.models import Client, ClientConfig, ClientType
-    from sqlmodel import select
-
-    import json
     
     clients_to_load = []
 
@@ -219,8 +219,7 @@ def seed_inference_providers(session: Session):
     Si se añaden nuevas SEED_*_API_KEY post-arranque inicial, añadir los
     providers manualmente vía POST /admin/providers o vaciar la tabla.
     """
-    from src.core.models import InferenceProvider, ProviderType
-    from sqlmodel import select
+
 
     existing = session.exec(select(InferenceProvider)).first()
     if existing:
@@ -233,6 +232,7 @@ def seed_inference_providers(session: Session):
     local_url = os.getenv("SEED_LOCAL_PROVIDER_URL", "ws://jota-inference:8002")
     local_model = os.getenv("SEED_LOCAL_MODEL_ID", "llama-3.2-3b")
     session.add(InferenceProvider(
+        id="local",
         name="Local (jota-inference)",
         type=ProviderType.local,
         base_url=local_url,
@@ -246,6 +246,7 @@ def seed_inference_providers(session: Session):
     if openai_key:
         openai_model = os.getenv("SEED_OPENAI_DEFAULT_MODEL", "gpt-4o")
         session.add(InferenceProvider(
+            id="openai",
             name="OpenAI",
             type=ProviderType.openai,
             api_key=openai_key,
@@ -259,6 +260,7 @@ def seed_inference_providers(session: Session):
     if anthropic_key:
         anthropic_model = os.getenv("SEED_ANTHROPIC_DEFAULT_MODEL", "claude-sonnet-4-6")
         session.add(InferenceProvider(
+            id="anthropic",
             name="Anthropic",
             type=ProviderType.anthropic,
             api_key=anthropic_key,
@@ -270,67 +272,115 @@ def seed_inference_providers(session: Session):
     session.commit()
 
 
-def seed_service_config(session: Session):
+def seed_service_configs(session: Session):
     """
-    Puebla service_config desde env si está vacía.
-    Debe llamarse DESPUÉS de seed_inference_providers (necesita el UUID del provider local).
+    Crea los registros de config tipados para cada servicio interno, leyendo
+    valores iniciales desde variables de entorno. Es idempotente: si la config
+    ya existe para un servicio, no la toca.
+    Debe llamarse DESPUÉS de bootstrap_system_clients (necesita que los
+    InternalServices existan) y de seed_inference_providers si se va a
+    usar SEED_ORCHESTRATOR_DEFAULT_PROVIDER_ID.
     """
-    from src.core.models import ServiceConfig, InferenceProvider, ProviderType
-    from sqlmodel import select
 
-    existing = session.exec(select(ServiceConfig)).first()
-    if existing:
-        print("✅ ServiceConfig ya existe. Saltando seed.")
-        return
 
-    print("🚀 Seeding service config...")
+    print("🚀 Seeding service configs...")
 
-    entries = []
+    def _seed(service_env_key: str, config_factory):
+        service_id = os.getenv(service_env_key)
+        if not service_id:
+            print(f"⚠️  {service_env_key} no definido. Saltando config de este servicio.")
+            return
+        from src.core.models import InternalService
+        svc = session.get(InternalService, service_id)
+        if not svc:
+            print(f"⚠️  InternalService '{service_id}' no encontrado. Saltando.")
+            return
+        config_factory(service_id)
+
+    # Orchestrator
+    def _orchestrator(service_id: str):
+        existing = session.exec(
+            select(OrchestratorConfig).where(OrchestratorConfig.service_id == service_id)
+        ).first()
+        if existing:
+            print(f"✅ OrchestratorConfig ya existe para: {service_id}")
+            return
+
+        def _resolve_provider(env_key: str) -> str | None:
+            pid = (os.getenv(env_key) or "").strip().lower() or None
+            if pid is None:
+                return None
+            exists = session.get(InferenceProvider, pid)
+            if not exists:
+                print(f"⚠️  Provider '{pid}' ({env_key}) no existe en DB. Se ignorará.")
+                return None
+            return pid
+
+        cfg = OrchestratorConfig(
+            service_id=service_id,
+            default_provider_id=_resolve_provider("SEED_ORCHESTRATOR_DEFAULT_PROVIDER_ID"),
+            fallback_provider_id=_resolve_provider("SEED_ORCHESTRATOR_FALLBACK_PROVIDER_ID"),
+        )
+        session.add(cfg)
+        print(f"🛠️  Creando OrchestratorConfig para: {service_id}")
 
     # Transcriber
-    transcriber_model = os.getenv("SEED_TRANSCRIBER_MODEL", "whisper-large-v3")
-    entries.append(ServiceConfig(
-        service="transcriber", key="model",
-        value=transcriber_model,
-        description="Modelo de Whisper a usar",
-    ))
-    chunk_ms = os.getenv("SEED_TRANSCRIBER_AUDIO_CHUNK_MS", "200")
-    entries.append(ServiceConfig(
-        service="transcriber", key="audio.chunk_ms",
-        value=int(chunk_ms),
-        description="Tamaño de chunk de audio en ms",
-    ))
+    def _transcriber(service_id: str):
+        existing = session.exec(
+            select(TranscriberConfig).where(TranscriberConfig.service_id == service_id)
+        ).first()
+        if existing:
+            print(f"✅ TranscriberConfig ya existe para: {service_id}")
+            return
+        model = os.getenv("SEED_TRANSCRIBER_MODEL", "whisper-large-v3")
+        chunk_ms = int(os.getenv("SEED_TRANSCRIBER_AUDIO_CHUNK_MS", "200"))
+        cfg = TranscriberConfig(service_id=service_id, model=model, audio_chunk_ms=chunk_ms)
+        session.add(cfg)
+        print(f"🛠️  Creando TranscriberConfig para: {service_id}")
 
     # Speaker
-    speaker_model = os.getenv("SEED_SPEAKER_MODEL", "kokoro-v1")
-    entries.append(ServiceConfig(
-        service="speaker", key="model",
-        value=speaker_model,
-        description="Modelo TTS a usar",
-    ))
+    def _speaker(service_id: str):
+        existing = session.exec(
+            select(SpeakerConfig).where(SpeakerConfig.service_id == service_id)
+        ).first()
+        if existing:
+            print(f"✅ SpeakerConfig ya existe para: {service_id}")
+            return
+        model = os.getenv("SEED_SPEAKER_MODEL", "kokoro-v1")
+        cfg = SpeakerConfig(service_id=service_id, model=model)
+        session.add(cfg)
+        print(f"🛠️  Creando SpeakerConfig para: {service_id}")
 
-    # Orchestrator — apunta al provider local (ya debe existir en DB)
-    local_provider = session.exec(
-        select(InferenceProvider).where(InferenceProvider.type == ProviderType.local)
-    ).first()
-    if not local_provider:
-        print("⚠️  No se encontró local provider. orchestrator.default_provider_id quedará None.")
-    default_provider_id = local_provider.id if local_provider else None
-    entries.append(ServiceConfig(
-        service="orchestrator", key="default_provider_id",
-        value=default_provider_id,
-        description="UUID del InferenceProvider por defecto",
-    ))
-    entries.append(ServiceConfig(
-        service="orchestrator", key="fallback_provider_id",
-        value=None,
-        description="UUID del InferenceProvider de fallback (null = sin fallback)",
-    ))
+    # Gateway
+    def _gateway(service_id: str):
+        existing = session.exec(
+            select(GatewayConfig).where(GatewayConfig.service_id == service_id)
+        ).first()
+        if existing:
+            print(f"✅ GatewayConfig ya existe para: {service_id}")
+            return
+        session.add(GatewayConfig(service_id=service_id))
+        print(f"🛠️  Creando GatewayConfig para: {service_id}")
 
-    for entry in entries:
-        session.add(entry)
+    # InferenceCenter
+    def _inference_center(service_id: str):
+        existing = session.exec(
+            select(InferenceCenterConfig).where(InferenceCenterConfig.service_id == service_id)
+        ).first()
+        if existing:
+            print(f"✅ InferenceCenterConfig ya existe para: {service_id}")
+            return
+        session.add(InferenceCenterConfig(service_id=service_id))
+        print(f"🛠️  Creando InferenceCenterConfig para: {service_id}")
+
+    _seed("INTERNAL_ORCHESTRATOR_ID", _orchestrator)
+    _seed("INTERNAL_TRANSCRIPTOR_ID", _transcriber)
+    _seed("INTERNAL_SPEAKER_ID", _speaker)
+    _seed("INTERNAL_GATEWAY_ID", _gateway)
+    _seed("INTERNAL_INFERENCE_ID", _inference_center)
+
     session.commit()
-    print(f"  ✅ {len(entries)} entradas de config creadas.")
+    print("✅ Service configs seeded.")
 
 
 def init_db():
@@ -364,9 +414,9 @@ def init_db():
                 bootstrap_system_clients(session)
                 bootstrap_clients(session)
                 sync_local_models(session)
-                bootstrap_admin(session)
+                # bootstrap_admin(session)
                 seed_inference_providers(session)
-                seed_service_config(session)
+                seed_service_configs(session)
             
             print("🚀 Sistema inicializado correctamente.")
             break
