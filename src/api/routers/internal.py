@@ -2,15 +2,18 @@
 Router /internal/ — acceso de servicios internos a config operativa.
 Auth: Bearer <API_SECRET_KEY> + X-API-Key: <service_api_key>
 """
+import os
 from datetime import datetime
 from typing import Any, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Path, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from src.core.database import get_session
 from src.core.models import (
-    InferenceProvider, ServiceConfig, ClientConfig, Client, InternalService
+    InferenceProvider, ClientConfig, Client, InternalService,
+    OrchestratorConfig, TranscriberConfig, SpeakerConfig,
+    GatewayConfig, InferenceCenterConfig,
 )
 from src.api.dependencies import get_internal_service
 from src.api.security import verify_api_key
@@ -25,112 +28,131 @@ router = APIRouter(
 )
 
 
-# --- DTOs ---
+# ---- Dispatch ----
 
-class ServiceConfigUpsert(BaseModel):
-    value: Any = Field(description="Valor a almacenar (cualquier tipo JSON: string, número, bool, objeto, array)")
-    description: Optional[str] = Field(None, description="Descripción legible del campo (se actualiza solo si se envía)")
+# Mapa estático service_id → clase de config.
+# Se evalúa una vez al arrancar; load_dotenv() ya corrió antes.
+CONFIG_TABLE_MAP: dict[str, type] = {k: v for k, v in {
+    "orchestrator": OrchestratorConfig,
+    "transcriptor": TranscriberConfig,
+    "speaker":      SpeakerConfig,
+    "gateway":      GatewayConfig,
+    os.getenv("INTERNAL_INFERENCE_ID"):    InferenceCenterConfig,
+}.items() if k is not None}
+
+# Campos de BaseUUIDModel que no se exponen en el patch ni en la respuesta config
+_BASE_FIELDS = {"id", "created_at", "updated_at", "version", "service_id"}
+
+
+def _get_config_for_service(service_id: str, session: Session):
+    """Devuelve la instancia de config para service_id, o None si no existe."""
+    config_cls = CONFIG_TABLE_MAP.get(service_id)
+    if config_cls is None:
+        return None
+    return session.exec(
+        select(config_cls).where(config_cls.service_id == service_id)
+    ).first()
+
+
+# ---- DTOs ----
+
+class ServiceConfigEntry(BaseModel):
+    service_id: str
+    config: dict
 
 
 # ============================================================
 # SERVICE CONFIG
 # ============================================================
 
-@router.get("/service-config", response_model=List[ServiceConfig])
+@router.get("/service-config", response_model=List[ServiceConfigEntry])
 def list_service_config(
     _: bool = Depends(verify_api_key),
     caller: InternalService = Depends(get_internal_service),
     session: Session = Depends(get_session),
 ):
-    """Lista toda la ServiceConfig del sistema.
+    """Lista la config de todos los servicios internos conocidos.
 
-    Devuelve las entradas de configuración de **todos** los servicios.
-    El acceso cross-service es intencional: el Orchestrator necesita leer
-    la config de Transcriptor, Speaker, etc. para orquestar el pipeline.
+    Solo incluye los servicios que tienen un registro de config en DB.
     """
-    return session.exec(select(ServiceConfig)).all()
+    result = []
+    for service_id in CONFIG_TABLE_MAP:
+        cfg = _get_config_for_service(service_id, session)
+        if cfg is not None:
+            result.append(ServiceConfigEntry(
+                service_id=service_id,
+                config=cfg.model_dump(exclude=_BASE_FIELDS),
+            ))
+    return result
 
 
-@router.get("/service-config/{service_name}", response_model=List[ServiceConfig])
-def get_service_config(
-    service_name: str = Path(description="Nombre del servicio (ej: `transcriber`, `speaker`, `orchestrator`)"),
-    _: bool = Depends(verify_api_key),
-    caller: InternalService = Depends(get_internal_service),
-    session: Session = Depends(get_session),
-):
-    """Lista la ServiceConfig de un servicio concreto.
-
-    Devuelve todas las claves de configuración del servicio indicado.
-    Retorna lista vacía si el servicio no tiene entradas.
-    """
-    return session.exec(
-        select(ServiceConfig).where(ServiceConfig.service == service_name)
-    ).all()
-
-
-@router.put("/service-config/{service_name}/{key}", response_model=ServiceConfig)
-def upsert_service_config(
-    service_name: str = Path(description="Nombre del servicio propietario de la clave"),
-    key: str = Path(description="Nombre de la clave (soporta notación punto, ej: `audio.chunk_ms`)"),
-    body: ServiceConfigUpsert = ...,
-    _: bool = Depends(verify_api_key),
-    caller: InternalService = Depends(get_internal_service),
-    session: Session = Depends(get_session),
-):
-    """Crea o actualiza una entrada de ServiceConfig.
-
-    Si la clave `{service_name}/{key}` ya existe la sobreescribe; si no, la crea.
-    El campo `description` solo se actualiza si se incluye en el body.
-    """
-    entry = session.exec(
-        select(ServiceConfig).where(
-            ServiceConfig.service == service_name, ServiceConfig.key == key
-        )
-    ).first()
-    if entry:
-        entry.value = body.value
-        if body.description is not None:
-            entry.description = body.description
-        entry.updated_at = datetime.utcnow()
-    else:
-        entry = ServiceConfig(
-            service=service_name,
-            key=key,
-            value=body.value,
-            description=body.description,
-        )
-    session.add(entry)
-    session.commit()
-    session.refresh(entry)
-    return entry
-
-
-@router.delete(
-    "/service-config/{service_name}/{key}",
-    status_code=204,
-    responses={404: {"description": "Entrada de configuración no encontrada"}},
+@router.get(
+    "/service-config/{service_id}",
+    responses={404: {"description": "Servicio desconocido o sin config"}},
 )
-def delete_service_config(
-    service_name: str = Path(description="Nombre del servicio propietario de la clave"),
-    key: str = Path(description="Nombre de la clave a eliminar"),
+def get_service_config(
+    service_id: str = Path(description="ID del servicio (ej: 'jota_orchestrator', 'transcriptor')"),
     _: bool = Depends(verify_api_key),
     caller: InternalService = Depends(get_internal_service),
     session: Session = Depends(get_session),
 ):
-    """Elimina una entrada de ServiceConfig.
+    """Config completa de un servicio concreto.
 
-    Retorna 204 sin cuerpo si la operación fue exitosa.
-    Retorna 404 si la clave no existe.
+    Devuelve el objeto tipado del servicio (OrchestratorConfig, TranscriberConfig, etc.).
+    404 si el service_id no corresponde a ningún servicio conocido o no tiene config aún.
     """
-    entry = session.exec(
-        select(ServiceConfig).where(
-            ServiceConfig.service == service_name, ServiceConfig.key == key
-        )
+    cfg = _get_config_for_service(service_id, session)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail="Service config not found")
+    return cfg
+
+
+@router.put(
+    "/service-config/{service_id}",
+    responses={
+        404: {"description": "Servicio desconocido o sin config"},
+        422: {"description": "Campo no permitido para este servicio"},
+    },
+)
+def update_service_config(
+    service_id: str = Path(description="ID del servicio a actualizar"),
+    patch: dict = ...,
+    _: bool = Depends(verify_api_key),
+    caller: InternalService = Depends(get_internal_service),
+    session: Session = Depends(get_session),
+):
+    """Actualización parcial de la config de un servicio.
+
+    Solo se actualizan los campos enviados. Los campos base (id, created_at,
+    updated_at, version, service_id) no se pueden modificar.
+    422 si se envía un campo fuera del schema del servicio.
+    """
+    config_cls = CONFIG_TABLE_MAP.get(service_id)
+    if config_cls is None:
+        raise HTTPException(status_code=404, detail="Unknown service")
+
+    cfg = session.exec(
+        select(config_cls).where(config_cls.service_id == service_id)
     ).first()
-    if not entry:
-        raise HTTPException(status_code=404, detail="Config entry not found")
-    session.delete(entry)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail="Service config not found")
+
+    allowed_fields = set(config_cls.model_fields.keys()) - _BASE_FIELDS
+    unknown = set(patch.keys()) - allowed_fields
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Campos no permitidos para {service_id}: {unknown}",
+        )
+
+    for field, value in patch.items():
+        setattr(cfg, field, value)
+    cfg.updated_at = datetime.utcnow()
+
+    session.add(cfg)
     session.commit()
+    session.refresh(cfg)
+    return cfg
 
 
 # ============================================================
@@ -143,12 +165,7 @@ def list_active_providers(
     caller: InternalService = Depends(get_internal_service),
     session: Session = Depends(get_session),
 ):
-    """Lista los InferenceProviders activos.
-
-    Solo devuelve providers con `is_active=true`. Los providers desactivados
-    por un admin no aparecen aquí. Usado por el Orchestrator para seleccionar
-    a qué backend de inferencia enrutar las peticiones.
-    """
+    """Lista los InferenceProviders activos."""
     return session.exec(
         select(InferenceProvider).where(InferenceProvider.is_active == True)  # noqa: E712
     ).all()
@@ -160,16 +177,12 @@ def list_active_providers(
     responses={404: {"description": "Provider no encontrado"}},
 )
 def get_provider(
-    provider_id: str = Path(description="UUID del InferenceProvider"),
+    provider_id: str = Path(description="Slug del InferenceProvider (ej: `local`, `openai`)"),
     _: bool = Depends(verify_api_key),
     caller: InternalService = Depends(get_internal_service),
     session: Session = Depends(get_session),
 ):
-    """Detalle de un InferenceProvider por ID.
-
-    Devuelve el provider independientemente de si está activo o no.
-    Útil para que el Orchestrator resuelva el provider referenciado en ServiceConfig.
-    """
+    """Detalle de un InferenceProvider por ID."""
     provider = session.get(InferenceProvider, provider_id)
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
@@ -191,11 +204,7 @@ def get_client_config(
     caller: InternalService = Depends(get_internal_service),
     session: Session = Depends(get_session),
 ):
-    """Devuelve la ClientConfig de un cliente.
-
-    Permite al Orchestrator (y otros servicios internos) leer las preferencias
-    de un cliente concreto: idioma STT, voz TTS, modelo preferido, barge-in, etc.
-    """
+    """Devuelve la ClientConfig de un cliente."""
     client = session.get(Client, client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -222,15 +231,7 @@ def update_client_config(
     caller: InternalService = Depends(get_internal_service),
     session: Session = Depends(get_session),
 ):
-    """Actualización parcial de la ClientConfig de un cliente.
-
-    Solo se actualizan los campos enviados en el body. Campos permitidos:
-    `stt_language`, `stt_model`, `stt_vad_thold`, `tts_voice`, `tts_speed`,
-    `preferred_model_id`, `system_prompt_extra`, `barge_in_enabled`,
-    `barge_in_min_chars`, `conversation_memory_limit`.
-
-    Retorna 422 si se envía algún campo fuera de la lista permitida.
-    """
+    """Actualización parcial de la ClientConfig de un cliente."""
     client = session.get(Client, client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")

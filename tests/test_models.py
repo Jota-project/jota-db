@@ -1,40 +1,95 @@
 from datetime import datetime
-from sqlmodel import select
+from sqlmodel import select, Session
 from src.core.models import (
-    ServiceConfig, InferenceProvider, ProviderType, AdminUser
+    InternalService,
+    OrchestratorConfig, TranscriberConfig, SpeakerConfig,
+    GatewayConfig, InferenceCenterConfig,
+    InferenceProvider, ProviderType, AdminUser,
 )
 
 
-def test_service_config_composite_pk(session):
-    sc = ServiceConfig(service="orchestrator", key="default_provider_id", value="some-uuid")
-    session.add(sc)
+def _make_service(session: Session, id: str) -> InternalService:
+    svc = InternalService(id=id, api_key="key", is_active=True)
+    session.add(svc)
+    session.flush()
+    return svc
+
+
+def test_orchestrator_config_create(session):
+    svc = _make_service(session, "orch-1")
+    cfg = OrchestratorConfig(service_id=svc.id)
+    session.add(cfg)
     session.commit()
+    session.refresh(cfg)
 
     result = session.exec(
-        select(ServiceConfig).where(
-            ServiceConfig.service == "orchestrator",
-            ServiceConfig.key == "default_provider_id",
-        )
+        select(OrchestratorConfig).where(OrchestratorConfig.service_id == svc.id)
     ).first()
     assert result is not None
-    assert result.value == "some-uuid"
+    assert result.default_provider_id is None
+    assert result.fallback_provider_id is None
 
 
-def test_service_config_upsert_by_pk(session):
-    sc = ServiceConfig(service="transcriber", key="model", value="whisper-large-v3")
-    session.add(sc)
+def test_transcriber_config_defaults(session):
+    svc = _make_service(session, "trans-1")
+    cfg = TranscriberConfig(service_id=svc.id)
+    session.add(cfg)
+    session.commit()
+    session.refresh(cfg)
+
+    assert cfg.model == "whisper-large-v3"
+    assert cfg.audio_chunk_ms == 200
+
+
+def test_speaker_config_defaults(session):
+    svc = _make_service(session, "spk-1")
+    cfg = SpeakerConfig(service_id=svc.id)
+    session.add(cfg)
+    session.commit()
+    session.refresh(cfg)
+
+    assert cfg.model == "kokoro-v1"
+
+
+def test_gateway_config_create(session):
+    svc = _make_service(session, "gw-1")
+    cfg = GatewayConfig(service_id=svc.id)
+    session.add(cfg)
+    session.commit()
+    session.refresh(cfg)
+
+    result = session.get(GatewayConfig, cfg.id)
+    assert result is not None
+    assert result.service_id == svc.id
+
+
+def test_inference_center_config_create(session):
+    svc = _make_service(session, "inf-1")
+    cfg = InferenceCenterConfig(service_id=svc.id)
+    session.add(cfg)
+    session.commit()
+    session.refresh(cfg)
+
+    result = session.get(InferenceCenterConfig, cfg.id)
+    assert result is not None
+    assert result.service_id == svc.id
+
+
+def test_service_config_unique_per_service(session):
+    """Cada servicio solo puede tener una config (unique constraint en service_id)."""
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    svc = _make_service(session, "orch-unique")
+    session.add(OrchestratorConfig(service_id=svc.id))
     session.commit()
 
-    sc.value = "whisper-medium"
-    session.add(sc)
-    session.commit()
+    with pytest.raises(IntegrityError):
+        session.add(OrchestratorConfig(service_id=svc.id))
+        session.commit()
 
-    results = session.exec(
-        select(ServiceConfig).where(ServiceConfig.service == "transcriber")
-    ).all()
-    assert len(results) == 1
-    assert results[0].value == "whisper-medium"
 
+# ---- Tests de InferenceProvider y AdminUser (sin cambios) ----
 
 def test_inference_provider_create(session):
     p = InferenceProvider(

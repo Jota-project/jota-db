@@ -15,7 +15,7 @@ router = APIRouter(
     },
 )
 
-router.include_router(config.router)
+# router.include_router(config.router)
 router.include_router(providers.router)
 router.include_router(clients.router)
 router.include_router(services.router)

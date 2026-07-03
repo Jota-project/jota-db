@@ -77,7 +77,33 @@ class InternalService(BaseStringModel, table=True):
     # El id heredado juega el rol de identificador (ej: "jota_orchestrator", "inference_center", "transcriptor")
     api_key: str # Clave secreta
     is_active: bool = Field(default=True)
+    
+# --- INTERNAL SERVICE CONFIG LAYER ---
+class OrchestratorConfig(BaseUUIDModel, table=True):
+    service_id: str = Field(foreign_key="internalservice.id", unique=True)
 
+    default_provider_id: Optional[str] = Field(default=None, foreign_key="inferenceprovider.id")
+    fallback_provider_id: Optional[str] = Field(default=None, foreign_key="inferenceprovider.id")
+
+class TranscriberConfig(BaseUUIDModel, table=True):
+    service_id: str = Field(foreign_key="internalservice.id", unique=True)
+
+    model: str = Field(default="whisper-large-v3")
+    audio_chunk_ms: int = Field(default=200)
+
+class SpeakerConfig(BaseUUIDModel, table=True):
+    service_id: str = Field(foreign_key="internalservice.id", unique=True)
+
+    model: str = Field(default="kokoro-v1")
+
+class GatewayConfig(BaseUUIDModel, table=True):
+    service_id: str = Field(foreign_key="internalservice.id", unique=True)
+
+class InferenceCenterConfig(BaseUUIDModel, table=True):
+    service_id: str = Field(foreign_key="internalservice.id", unique=True)
+
+
+#TODO: Con la nueva abstraccion de providers, quizás ya no necesitemos esta tabla y podamos manejar todo desde InferenceProvider
 # --- MODELS CATALOG LAYER ---
 class AIModel(BaseStringModel, table=True):
     name: str
@@ -161,21 +187,8 @@ class ProviderType(str, Enum):
     openai = "openai"
     anthropic = "anthropic"
     custom = "custom"
-
-
-class ServiceConfig(SQLModel, table=True):
-    # No hereda BaseUUIDModel intencionalmente: es un key-value store.
-    # La PK compuesta (service, key) actúa como identificador único y el
-    # patrón de uso es upsert, no escritura versionada.
-    __tablename__ = "service_config"
-    service: str = Field(primary_key=True)
-    key: str = Field(primary_key=True)
-    value: Optional[Any] = Field(default=None, sa_column=Column(SAJson))
-    description: Optional[str] = None
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class InferenceProvider(BaseUUIDModel, table=True):
+class InferenceProvider(BaseStringModel, table=True):
+    # id es el slug estable del provider (ej: "local", "openai", "anthropic")
     name: str
     type: ProviderType
     base_url: Optional[str] = None
@@ -183,7 +196,7 @@ class InferenceProvider(BaseUUIDModel, table=True):
     default_model_id: Optional[str] = None
     is_active: bool = Field(default=True)
     extra_config: Optional[Any] = Field(default=None, sa_column=Column(SAJson))
-    
+
     conversations: List["Conversation"] = Relationship(back_populates="provider")
 
 
