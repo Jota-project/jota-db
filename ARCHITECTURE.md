@@ -1,3 +1,5 @@
+> ⚠️ **Legacy · Archived.** Este documento describe jota-db, un componente legado sustituido por la BD local de jota-gateway (desde v1.9.0). Arquitectura actual de Jota: https://github.com/jota-project/.github/blob/main/ARCHITECTURE.md
+
 # Cerebro Digital - Arquitectura de la API
 
 ## 📁 Estructura del Proyecto
